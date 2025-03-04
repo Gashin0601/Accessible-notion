@@ -3,16 +3,21 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Notion Accessibility Enhancer がインストールされました');
 });
 
+// 文字列が特定のプレフィックスで始まるかチェックする関数
+function startsWith(str, prefix) {
+  return str && typeof str === 'string' && str.indexOf(prefix) === 0;
+}
+
 // URLをチェックする関数
 function isAllowedUrl(urlString) {
-  // 無効なURLの早期リターン
+  // 基本的な検証
   if (!urlString || typeof urlString !== 'string') {
     console.debug('無効なURL:', urlString);
     return false;
   }
 
-  // URLが chrome-extension:// で始まる場合は無視
-  if (urlString.startsWith('chrome-extension://')) {
+  // chrome-extension URLは無視
+  if (startsWith(urlString, 'chrome-extension://')) {
     return false;
   }
 
@@ -20,13 +25,14 @@ function isAllowedUrl(urlString) {
     const url = new URL(urlString);
     
     // プロトコルチェック
-    if (!['http:', 'https:', 'file:'].includes(url.protocol)) {
-      console.debug('未対応のプロトコル:', url.protocol);
+    const protocol = url.protocol;
+    if (protocol !== 'http:' && protocol !== 'https:' && protocol !== 'file:') {
+      console.debug('未対応のプロトコル:', protocol);
       return false;
     }
 
     // ローカルファイルの場合
-    if (url.protocol === 'file:') {
+    if (protocol === 'file:') {
       return true;
     }
 
@@ -37,10 +43,17 @@ function isAllowedUrl(urlString) {
       '127.0.0.1'
     ];
 
-    const hostname = url.hostname.toLowerCase();
-    const isAllowed = allowedDomains.some(domain => 
-      hostname === domain || hostname.endsWith('.' + domain)
-    );
+    const hostname = (url.hostname || '').toLowerCase();
+    let isAllowed = false;
+
+    // ドメインチェック
+    for (const domain of allowedDomains) {
+      if (hostname === domain || (hostname.length > domain.length && 
+          hostname.endsWith('.' + domain))) {
+        isAllowed = true;
+        break;
+      }
+    }
 
     console.debug('URLチェック結果:', {
       url: urlString,
@@ -77,6 +90,11 @@ async function safeGetTab(tabId) {
 
 // content.jsを安全に実行する関数
 async function safeExecuteScript(tabId) {
+  if (typeof tabId !== 'number') {
+    console.debug('無効なタブID:', tabId);
+    return false;
+  }
+
   try {
     await chrome.scripting.executeScript({
       target: { tabId },
@@ -92,8 +110,8 @@ async function safeExecuteScript(tabId) {
 
 // タブが更新されたときの処理
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // 無効な引数のチェック
-  if (!tabId || !changeInfo) {
+  // 基本的な検証
+  if (!tabId || !changeInfo || typeof changeInfo.status !== 'string') {
     console.debug('無効な引数:', { tabId, changeInfo });
     return;
   }
@@ -113,7 +131,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       }
 
       // URLの確認（現在のURLまたは遷移中のURLを使用）
-      const tabUrl = currentTab.url || currentTab.pendingUrl;
+      const tabUrl = currentTab.url || currentTab.pendingUrl || '';
       console.debug('処理対象URL:', tabUrl);
 
       if (!isAllowedUrl(tabUrl)) {
@@ -131,5 +149,9 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 // エラーハンドリング
 chrome.runtime.onError.addListener((error) => {
-  console.error('拡張機能でエラーが発生しました:', error.message);
+  if (error && error.message) {
+    console.error('拡張機能でエラーが発生しました:', error.message);
+  } else {
+    console.error('拡張機能で不明なエラーが発生しました');
+  }
 }); 
