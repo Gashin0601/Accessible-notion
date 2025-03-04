@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Notion Accessibility Enhancer",
+  "version": "1.0",
+  "description": "Notionをスクリーンリーダーでより使いやすくするための拡張機能です。",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*.notion.so/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["*://*.notion.so/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+} 
