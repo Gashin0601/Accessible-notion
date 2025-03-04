@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notion Accessibility Enhancer - スクリーンリーダー対応拡張機能</title>
+    <link rel="stylesheet" href="styles.css">
+    <meta name="description" content="Notionをスクリーンリーダーでより使いやすくするためのChrome拡張機能">
+</head>
+<body>
+    <header>
+        <nav role="navigation" aria-label="メインナビゲーション">
+            <ul>
+                <li><a href="#features">機能</a></li>
+                <li><a href="#installation">インストール</a></li>
+                <li><a href="#usage">使い方</a></li>
+                <li><a href="#contact">お問い合わせ</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <main>
+        <section class="hero">
+            <h1>Notion Accessibility Enhancer</h1>
+            <p>Notionをスクリーンリーダーで快適に使用するためのChrome拡張機能</p>
+            <a href="https://github.com/Gashin0601/Accessible-notion" class="cta-button" aria-label="GitHubでダウンロード">
+                ダウンロード
+            </a>
+        </section>
+
+        <section id="features" aria-labelledby="features-heading">
+            <h2 id="features-heading">主な機能</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <h3>不適切なクリック要素の修正</h3>
+                    <p>スクリーンリーダーで不要に読み上げられる要素を最適化します</p>
+                </div>
+                <div class="feature-card">
+                    <h3>ARIAラベルの最適化</h3>
+                    <p>ブロック要素に適切なラベルを付与し、内容を分かりやすく伝えます</p>
+                </div>
+                <div class="feature-card">
+                    <h3>ナビゲーション改善</h3>
+                    <p>サイドバーなどのナビゲーション要素を適切にマークアップします</p>
+                </div>
+                <div class="feature-card">
+                    <h3>画像の代替テキスト</h3>
+                    <p>画像に適切な代替テキストを自動で設定します</p>
+                </div>
+            </div>
+        </section>
+
+        <section id="installation" aria-labelledby="installation-heading">
+            <h2 id="installation-heading">インストール方法</h2>
+            <ol class="installation-steps">
+                <li>GitHubからリポジトリをダウンロードまたはクローン</li>
+                <li>Chromeで <code>chrome://extensions</code> を開く</li>
+                <li>デベロッパーモードを有効化</li>
+                <li>「パッケージ化されていない拡張機能を読み込む」をクリック</li>
+                <li>ダウンロードしたフォルダを選択</li>
+            </ol>
+        </section>
+
+        <section id="usage" aria-labelledby="usage-heading">
+            <h2 id="usage-heading">使い方</h2>
+            <p>インストール後、自動的にNotionページのアクセシビリティが改善されます：</p>
+            <ul class="usage-list">
+                <li>クリック可能な要素の適切な処理</li>
+                <li>ブロック要素への分かりやすいラベル付け</li>
+                <li>ナビゲーション要素の改善</li>
+                <li>画像の代替テキスト自動設定</li>
+                <li>フォーカス表示の改善</li>
+                <li>コントラスト比の向上</li>
+            </ul>
+        </section>
+
+        <section id="contact" aria-labelledby="contact-heading">
+            <h2 id="contact-heading">お問い合わせ</h2>
+            <p>不具合や改善要望は<a href="https://github.com/Gashin0601/Accessible-notion/issues">GitHubのIssues</a>からお願いします。</p>
+        </section>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 Notion Accessibility Enhancer</p>
+        <p>MIT License</p>
+    </footer>
+</body>
+</html> 

@@ -10,6 +10,13 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: ['content.js']
+    }).catch(error => {
+      console.error('スクリプトの実行中にエラーが発生しました:', error);
     });
   }
+});
+
+// エラーハンドリング
+chrome.runtime.onError.addListener((error) => {
+  console.error('拡張機能でエラーが発生しました:', error.message);
 }); 
