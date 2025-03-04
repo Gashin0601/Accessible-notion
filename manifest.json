@@ -7,7 +7,8 @@
     "activeTab",
     "scripting",
     "tabs",
-    "storage"
+    "storage",
+    "commands"
   ],
   "host_permissions": [
     "*://*.notion.so/*",
@@ -33,5 +34,14 @@
   ],
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "commands": {
+    "toggle_features": {
+      "suggested_key": {
+        "default": "Ctrl+Q"
+      },
+      "description": "機能切り替えのプレフィックスキー"
+    }
+  },
+  "options_page": "options.html"
 } 

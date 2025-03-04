@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notion Accessibility Enhancer - 設定</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #1a73e8;
+            margin-bottom: 20px;
+        }
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #202124;
+        }
+        .feature-toggle {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .feature-toggle label {
+            margin-left: 10px;
+            flex-grow: 1;
+        }
+        .api-settings {
+            margin-top: 20px;
+        }
+        .api-settings input {
+            width: 100%;
+            padding: 8px;
+            margin: 8px 0;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #1557b0;
+        }
+        .status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .status.success {
+            background-color: #e6f4ea;
+            color: #137333;
+        }
+        .status.error {
+            background-color: #fce8e6;
+            color: #c5221f;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Notion Accessibility Enhancer 設定</h1>
+        
+        <div class="section">
+            <h2>機能の有効化</h2>
+            <div class="feature-toggle">
+                <input type="checkbox" id="enableHeadings">
+                <label for="enableHeadings">見出しの強調</label>
+            </div>
+            <div class="feature-toggle">
+                <input type="checkbox" id="enableAltText">
+                <label for="enableAltText">画像の代替テキスト</label>
+            </div>
+            <div class="feature-toggle">
+                <input type="checkbox" id="enableKeyboardNav">
+                <label for="enableKeyboardNav">キーボードナビゲーション</label>
+            </div>
+        </div>
+
+        <div class="section">
+            <h2>APIの設定</h2>
+            <div class="api-settings">
+                <input type="password" id="notionToken" placeholder="Notion API Token">
+                <button id="validateToken">トークンを検証</button>
+            </div>
+            <div id="tokenStatus" class="status"></div>
+        </div>
+
+        <div class="section">
+            <h2>キーボードショートカット</h2>
+            <p>プレフィックスキー: <code>Ctrl+Q</code></p>
+            <ul>
+                <li><code>Ctrl+Q, H</code>: 次の見出しへ移動</li>
+                <li><code>Ctrl+Q, B</code>: 前のブロックへ移動</li>
+                <li><code>Ctrl+Q, N</code>: 次のブロックへ移動</li>
+            </ul>
+        </div>
+
+        <button id="saveSettings">設定を保存</button>
+        <div id="saveStatus" class="status"></div>
+    </div>
+    <script src="options.js"></script>
+</body>
+</html> 
