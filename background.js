@@ -3,34 +3,38 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Notion Accessibility Enhancer がインストールされました');
 });
 
-// タブが更新されたときの処理
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+// Notionのドメインをチェックする関数
+function isNotionUrl(urlString) {
   try {
-    // タブとURLの存在確認
-    if (!tab || !changeInfo || changeInfo.status !== 'complete') {
-      return;
-    }
+    if (!urlString) return false;
+    const url = new URL(urlString);
+    return url.hostname.endsWith('notion.so');
+  } catch {
+    return false;
+  }
+}
 
-    // URLの安全なチェック
-    const url = tab.url || tab.pendingUrl;
-    if (!url) {
-      return;
-    }
+// タブが更新されたときの処理
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  // 完了ステータスでない場合は処理しない
+  if (changeInfo.status !== 'complete') return;
 
-    // notion.soドメインのチェック
-    if (url.toLowerCase().indexOf('notion.so') === -1) {
-      return;
-    }
+  try {
+    // タブ情報の取得を試みる
+    const currentTab = await chrome.tabs.get(tabId);
+    if (!currentTab) return;
 
-    // スクリプトの実行
-    chrome.scripting.executeScript({
-      target: { tabId: tabId },
+    // URLの確認
+    const tabUrl = currentTab.url || currentTab.pendingUrl;
+    if (!isNotionUrl(tabUrl)) return;
+
+    // content.jsの実行
+    await chrome.scripting.executeScript({
+      target: { tabId },
       files: ['content.js']
-    }).catch(error => {
-      console.error('スクリプトの実行中にエラーが発生しました:', error);
     });
   } catch (error) {
-    console.error('タブの処理中にエラーが発生しました:', error);
+    console.error('拡張機能の実行中にエラーが発生しました:', error);
   }
 });
 
