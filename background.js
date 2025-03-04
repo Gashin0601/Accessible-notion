@@ -5,10 +5,19 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // URLをチェックする関数
 function isAllowedUrl(urlString) {
+  // URLが未定義または空の場合
+  if (!urlString || typeof urlString !== 'string') {
+    return false;
+  }
+
   try {
-    if (!urlString) return false;
     const url = new URL(urlString);
     
+    // ローカルファイルの場合
+    if (url.protocol === 'file:') {
+      return true;
+    }
+
     // 許可するドメインのリスト
     const allowedDomains = [
       'notion.so',
@@ -16,40 +25,57 @@ function isAllowedUrl(urlString) {
       '127.0.0.1'
     ];
 
-    // ローカルファイルの場合
-    if (url.protocol === 'file:') return true;
-
-    // ドメインチェック
+    const hostname = url.hostname.toLowerCase();
     return allowedDomains.some(domain => 
-      url.hostname === domain || url.hostname.endsWith('.' + domain)
+      hostname === domain || hostname.endsWith('.' + domain)
     );
-  } catch {
+  } catch (error) {
+    console.debug('URL解析エラー:', error);
     return false;
   }
 }
 
-// タブが更新されたときの処理
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  // 完了ステータスでない場合は処理しない
-  if (changeInfo.status !== 'complete') return;
-
+// タブ情報を安全に取得する関数
+async function safeGetTab(tabId) {
   try {
-    // タブ情報の取得を試みる
-    const currentTab = await chrome.tabs.get(tabId);
-    if (!currentTab) return;
-
-    // URLの確認
-    const tabUrl = currentTab.url || currentTab.pendingUrl;
-    if (!isAllowedUrl(tabUrl)) return;
-
-    // content.jsの実行
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ['content.js']
-    });
+    return await chrome.tabs.get(tabId);
   } catch (error) {
-    console.error('拡張機能の実行中にエラーが発生しました:', error);
+    console.debug('タブ情報の取得に失敗:', error);
+    return null;
   }
+}
+
+// タブが更新されたときの処理
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // タブ更新以外のイベントは無視
+  if (!changeInfo || changeInfo.status !== 'complete') {
+    return;
+  }
+
+  // 即時実行関数でasync/awaitを使用
+  (async () => {
+    try {
+      // タブ情報の取得
+      const currentTab = await safeGetTab(tabId);
+      if (!currentTab) {
+        return;
+      }
+
+      // URLの確認（現在のURLまたは遷移中のURLを使用）
+      const tabUrl = currentTab.url || currentTab.pendingUrl;
+      if (!isAllowedUrl(tabUrl)) {
+        return;
+      }
+
+      // content.jsの実行
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        files: ['content.js']
+      });
+    } catch (error) {
+      console.error('拡張機能の実行中にエラーが発生しました:', error);
+    }
+  })();
 });
 
 // エラーハンドリング
