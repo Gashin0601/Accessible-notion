@@ -3,155 +3,54 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Notion Accessibility Enhancer がインストールされました');
 });
 
-// 文字列が特定のプレフィックスで始まるかチェックする関数
-function startsWith(str, prefix) {
-  return str && typeof str === 'string' && str.indexOf(prefix) === 0;
-}
-
-// URLをチェックする関数
-function isAllowedUrl(urlString) {
-  // 基本的な検証
-  if (!urlString || typeof urlString !== 'string') {
-    console.debug('無効なURL:', urlString);
-    return false;
-  }
-
-  // chrome-extension URLは無視
-  if (startsWith(urlString, 'chrome-extension://')) {
-    return false;
-  }
-
+// シンプルなURLチェック
+function isValidUrl(urlString) {
   try {
-    const url = new URL(urlString);
-    
-    // プロトコルチェック
-    const protocol = url.protocol;
-    if (protocol !== 'http:' && protocol !== 'https:' && protocol !== 'file:') {
-      console.debug('未対応のプロトコル:', protocol);
+    if (!urlString || typeof urlString !== 'string') {
       return false;
     }
-
-    // ローカルファイルの場合
-    if (protocol === 'file:') {
-      return true;
-    }
-
-    // 許可するドメインのリスト
-    const allowedDomains = [
-      'notion.so',
-      'localhost',
-      '127.0.0.1'
-    ];
-
-    const hostname = (url.hostname || '').toLowerCase();
-    let isAllowed = false;
-
-    // ドメインチェック
-    for (const domain of allowedDomains) {
-      if (hostname === domain || (hostname.length > domain.length && 
-          hostname.endsWith('.' + domain))) {
-        isAllowed = true;
-        break;
-      }
-    }
-
-    console.debug('URLチェック結果:', {
-      url: urlString,
-      hostname: hostname,
-      isAllowed: isAllowed
-    });
-
-    return isAllowed;
-  } catch (error) {
-    console.debug('URL解析エラー:', error);
-    return false;
-  }
-}
-
-// タブ情報を安全に取得する関数
-async function safeGetTab(tabId) {
-  if (typeof tabId !== 'number') {
-    console.debug('無効なタブID:', tabId);
-    return null;
-  }
-
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    if (!tab) {
-      console.debug('タブが見つかりません:', tabId);
-      return null;
-    }
-    return tab;
-  } catch (error) {
-    console.debug('タブ情報の取得に失敗:', error);
-    return null;
-  }
-}
-
-// content.jsを安全に実行する関数
-async function safeExecuteScript(tabId) {
-  if (typeof tabId !== 'number') {
-    console.debug('無効なタブID:', tabId);
-    return false;
-  }
-
-  try {
-    await chrome.scripting.executeScript({
-      target: { tabId },
-      files: ['content.js']
-    });
-    console.debug('content.jsを実行しました:', tabId);
-    return true;
-  } catch (error) {
-    console.error('スクリプトの実行に失敗:', error);
+    return urlString.indexOf('notion.so') !== -1 || 
+           urlString.indexOf('localhost') !== -1 || 
+           urlString.indexOf('127.0.0.1') !== -1 ||
+           urlString.indexOf('file://') === 0;
+  } catch (e) {
     return false;
   }
 }
 
 // タブが更新されたときの処理
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // 基本的な検証
-  if (!tabId || !changeInfo || typeof changeInfo.status !== 'string') {
-    console.debug('無効な引数:', { tabId, changeInfo });
-    return;
-  }
+  try {
+    // 基本的な検証
+    if (!tabId || !changeInfo || changeInfo.status !== 'complete') {
+      return;
+    }
 
-  // タブ更新以外のイベントは無視
-  if (changeInfo.status !== 'complete') {
-    return;
-  }
-
-  // 即時実行関数でasync/awaitを使用
-  (async () => {
-    try {
-      // タブ情報の取得
-      const currentTab = await safeGetTab(tabId);
-      if (!currentTab) {
+    // タブ情報の取得
+    chrome.tabs.get(tabId, (tab) => {
+      if (chrome.runtime.lastError) {
         return;
       }
 
-      // URLの確認（現在のURLまたは遷移中のURLを使用）
-      const tabUrl = currentTab.url || currentTab.pendingUrl || '';
-      console.debug('処理対象URL:', tabUrl);
-
-      if (!isAllowedUrl(tabUrl)) {
-        console.debug('対象外のURL:', tabUrl);
+      const url = tab.url || '';
+      
+      // URLの検証
+      if (!isValidUrl(url)) {
         return;
       }
 
       // content.jsの実行
-      await safeExecuteScript(tabId);
-    } catch (error) {
-      console.error('拡張機能の実行中にエラーが発生しました:', error);
-    }
-  })();
+      chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['content.js']
+      }).catch(() => {});
+    });
+  } catch (e) {
+    // エラーを無視
+  }
 });
 
 // エラーハンドリング
-chrome.runtime.onError.addListener((error) => {
-  if (error && error.message) {
-    console.error('拡張機能でエラーが発生しました:', error.message);
-  } else {
-    console.error('拡張機能で不明なエラーが発生しました');
-  }
+chrome.runtime.onError.addListener(() => {
+  // エラーを無視
 }); 
