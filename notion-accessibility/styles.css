@@ -1,0 +1,37 @@
+/* フォーカス表示の改善 */
+*:focus {
+  outline: 3px solid #2eaadc !important;
+  outline-offset: 2px !important;
+}
+
+/* コントラスト比の改善 */
+.notion-page-content {
+  color: #000000 !important;
+}
+
+/* リンクの視認性向上 */
+a:not(.notion-page-link) {
+  text-decoration: underline !important;
+}
+
+/* フォーカス可能な要素のホバー状態 */
+[role="button"]:hover,
+[tabindex="0"]:hover {
+  background-color: rgba(55, 53, 47, 0.08) !important;
+}
+
+/* スキップリンクの追加 */
+.skip-to-content {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: #2eaadc;
+  color: white;
+  padding: 8px;
+  z-index: 100;
+  transition: top 0.3s;
+}
+
+.skip-to-content:focus {
+  top: 0;
+} 
