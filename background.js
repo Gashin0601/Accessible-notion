@@ -5,14 +5,32 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // タブが更新されたときの処理
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // URLが存在し、notion.soを含む場合のみ実行
-  if (changeInfo.status === 'complete' && tab?.url && tab.url.includes('notion.so')) {
+  try {
+    // タブとURLの存在確認
+    if (!tab || !changeInfo || changeInfo.status !== 'complete') {
+      return;
+    }
+
+    // URLの安全なチェック
+    const url = tab.url || tab.pendingUrl;
+    if (!url) {
+      return;
+    }
+
+    // notion.soドメインのチェック
+    if (url.toLowerCase().indexOf('notion.so') === -1) {
+      return;
+    }
+
+    // スクリプトの実行
     chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: ['content.js']
     }).catch(error => {
       console.error('スクリプトの実行中にエラーが発生しました:', error);
     });
+  } catch (error) {
+    console.error('タブの処理中にエラーが発生しました:', error);
   }
 });
 
