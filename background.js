@@ -3,12 +3,26 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('Notion Accessibility Enhancer がインストールされました');
 });
 
-// Notionのドメインをチェックする関数
-function isNotionUrl(urlString) {
+// URLをチェックする関数
+function isAllowedUrl(urlString) {
   try {
     if (!urlString) return false;
     const url = new URL(urlString);
-    return url.hostname.endsWith('notion.so');
+    
+    // 許可するドメインのリスト
+    const allowedDomains = [
+      'notion.so',
+      'localhost',
+      '127.0.0.1'
+    ];
+
+    // ローカルファイルの場合
+    if (url.protocol === 'file:') return true;
+
+    // ドメインチェック
+    return allowedDomains.some(domain => 
+      url.hostname === domain || url.hostname.endsWith('.' + domain)
+    );
   } catch {
     return false;
   }
@@ -26,7 +40,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
     // URLの確認
     const tabUrl = currentTab.url || currentTab.pendingUrl;
-    if (!isNotionUrl(tabUrl)) return;
+    if (!isAllowedUrl(tabUrl)) return;
 
     // content.jsの実行
     await chrome.scripting.executeScript({
