@@ -5,51 +5,41 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // シンプルなURLチェック
 function isValidUrl(urlString) {
+  // 基本的な検証
   if (!urlString || typeof urlString !== 'string') {
     return false;
   }
-  
-  try {
-    const url = new URL(urlString);
-    return url.hostname.includes('notion.so') || 
-           url.hostname.includes('localhost') || 
-           url.hostname.includes('127.0.0.1') ||
-           url.protocol === 'file:';
-  } catch {
-    return false;
-  }
+
+  // 単純な文字列チェック
+  return urlString.includes('notion.so') || 
+         urlString.includes('localhost') || 
+         urlString.includes('127.0.0.1') ||
+         urlString.startsWith('file://');
 }
 
 // タブが更新されたときの処理
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  // 基本的な検証
-  if (!tabId || !changeInfo || !tab) {
-    return;
-  }
+  try {
+    // 基本的な検証
+    if (!tab?.url || !tabId || changeInfo.status !== 'complete') {
+      return;
+    }
 
-  // タブのURLが完全に読み込まれるまで待機
-  if (changeInfo.status !== 'complete') {
-    return;
-  }
+    // URLの検証
+    if (!isValidUrl(tab.url)) {
+      return;
+    }
 
-  // タブのURLを安全に取得
-  const url = tab?.url;
-  if (!url) {
-    return;
+    // content.jsの実行
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ['content.js']
+    }).catch(() => {
+      // エラーを無視
+    });
+  } catch (error) {
+    // エラーを無視
   }
-
-  // URLの検証
-  if (!isValidUrl(url)) {
-    return;
-  }
-
-  // content.jsの実行
-  chrome.scripting.executeScript({
-    target: { tabId: tabId },
-    files: ['content.js']
-  }).catch(error => {
-    console.error('スクリプトの実行に失敗:', error);
-  });
 });
 
 // エラーハンドリング
