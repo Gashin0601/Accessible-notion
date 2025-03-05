@@ -64,10 +64,36 @@
     console.log('[Notion Accessibility Enhancer] 汎用ラベルを設定:', el);
   }
 
+  // クリック可能な要素を検出する関数
+  function findClickableElements() {
+    // tabindex属性を持つ要素
+    const tabIndexElements = appNode.querySelectorAll('[tabindex]');
+    
+    // クリックイベントリスナーを持つ要素（一部）
+    const clickableElements = appNode.querySelectorAll('div[role="button"], div.clickable, div[data-click-id], div.notion-selectable, div.notion-page-block, div.notion-collection_view-block');
+    
+    // Notionの特定のクラスを持つ要素
+    const notionElements = appNode.querySelectorAll('.notion-focusable, .notion-sidebar-item, .notion-record-icon, .notion-token-operator');
+    
+    console.log(`[Notion Accessibility Enhancer] 検出された要素: tabindex=${tabIndexElements.length}, clickable=${clickableElements.length}, notion=${notionElements.length}`);
+    
+    // 各要素に対して処理を適用
+    tabIndexElements.forEach(enhanceElement);
+    clickableElements.forEach(enhanceElement);
+    notionElements.forEach(enhanceElement);
+  }
+
   // 初期ロード時に既存の対象要素を修正
   const initialElements = appNode.querySelectorAll('[tabindex]');
   console.log(`[Notion Accessibility Enhancer] 初期要素数: ${initialElements.length}`);
   initialElements.forEach(enhanceElement);
+
+  // ページ読み込み完了後に再スキャン
+  window.addEventListener('load', () => {
+    console.log('[Notion Accessibility Enhancer] ページ読み込み完了、要素を再スキャンします');
+    setTimeout(findClickableElements, 1000); // 1秒後に再スキャン
+    setTimeout(findClickableElements, 3000); // 3秒後に再スキャン（遅延読み込み要素のため）
+  });
 
   // DOM変更監視：新しく追加された要素にも適用
   const observer = new MutationObserver((mutations) => {
@@ -81,7 +107,7 @@
             enhanceElement(node);
             addedCount++;
           }
-          const childElements = node.querySelectorAll && node.querySelectorAll('[tabindex]');
+          const childElements = node.querySelectorAll && node.querySelectorAll('[tabindex], div[role="button"], div.clickable, div[data-click-id], .notion-focusable');
           if (childElements) {
             childElements.forEach(enhanceElement);
             addedCount += childElements.length;
@@ -105,4 +131,7 @@
   });
   observer.observe(appNode, { childList: true, subtree: true, attributes: true });
   console.log('[Notion Accessibility Enhancer] MutationObserverが開始されました');
+
+  // 定期的に再スキャン（Notionは動的にコンテンツを変更するため）
+  setInterval(findClickableElements, 5000); // 5秒ごとに再スキャン
 })(); 
