@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Notion Accessibility Enhancer",
+  "version": "1.0.0",
+  "description": "Improve Notion accessibility for screen reader and keyboard users.",
+  "icons": {
+    "128": "icons/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.notion.so/*", "https://*.notion.site/*"],
+      "js": ["contentScript.js"],
+      "run_at": "document_idle"
+    }
+  ]
+} 
