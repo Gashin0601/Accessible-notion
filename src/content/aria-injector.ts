@@ -53,11 +53,13 @@ export function enhanceBlock(block: Element): void {
   }
 
   // Build aria-label from content
+  // Use existing roledescription if Notion already provides one (may be localized)
+  const rdLabel = block.getAttribute('aria-roledescription') ?? info.description;
   const text = getBlockText(block);
   if (text) {
-    block.setAttribute('aria-label', `${info.description}: ${text}`);
+    block.setAttribute('aria-label', `${rdLabel}: ${text}`);
   } else {
-    block.setAttribute('aria-label', `${info.description} (空)`);
+    block.setAttribute('aria-label', `${rdLabel} (空)`);
   }
 
   // Toggle-specific: aria-expanded

@@ -87,6 +87,14 @@ async function init(): Promise<void> {
     logInfo(MODULE, 'Initialization complete');
     announce('Accessible Notion が有効です');
 
+    // Re-scan after delays to catch late-rendered content
+    setTimeout(() => scanAndEnhance(), 2000);
+    setTimeout(() => {
+      scanAndEnhance();
+      if (settings.features.sidebarTree) enhanceTreeItems();
+      if (settings.features.dbTableGrid) scanAndEnhanceTables();
+    }, 5000);
+
   } catch (error) {
     logError(MODULE, 'Initialization failed:', error);
   }

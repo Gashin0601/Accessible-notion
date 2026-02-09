@@ -64,17 +64,29 @@ function getCleanPageName(treeItem: Element): string {
 
 /**
  * Determine if this treeitem corresponds to the currently open page.
+ * Notion treeitems are themselves <a> tags with href attributes.
  */
 function isCurrentPage(treeItem: Element): boolean {
-  const link = treeItem.querySelector('a[href]');
-  if (!link) return false;
+  // The treeitem itself may be an <a> tag with href
+  const href = treeItem.getAttribute('href')
+    ?? treeItem.querySelector('a[href]')?.getAttribute('href')
+    ?? '';
+  if (!href) return false;
 
-  const href = link.getAttribute('href') ?? '';
   const currentPath = window.location.pathname;
 
-  // Compare the last segment (page ID) of the URL
-  const hrefId = href.split('/').pop()?.split('-').pop() ?? '';
-  const currentId = currentPath.split('/').pop()?.split('-').pop() ?? '';
+  // Extract page ID: last segment, after the last '-' (or the whole segment if no '-')
+  // e.g. "/fa02d1ba35464e74a604e41c1c67fa77?pvs=9" → "fa02d1ba35464e74a604e41c1c67fa77"
+  const extractId = (path: string): string => {
+    const clean = path.split('?')[0]; // remove query params
+    const segment = clean.split('/').pop() ?? '';
+    // If segment has dashes (slug-id format), take after last dash
+    const lastDash = segment.lastIndexOf('-');
+    return lastDash >= 0 ? segment.slice(lastDash + 1) : segment;
+  };
+
+  const hrefId = extractId(href);
+  const currentId = extractId(currentPath);
 
   return hrefId !== '' && currentId !== '' && hrefId === currentId;
 }
@@ -233,16 +245,14 @@ function handleTreeKeydown(event: KeyboardEvent): void {
     case 'Enter': {
       event.preventDefault();
       event.stopPropagation();
-      const link = currentItem.querySelector('a[href]') as HTMLElement | null;
-      if (link) {
-        link.click();
-        announce(`${currentItem.getAttribute('aria-label') ?? 'ページ'} を開きました`);
-        // After navigation, focus will be handled by page load
-        setTimeout(() => {
-          const mainFrame = document.querySelector('main.notion-frame') as HTMLElement | null;
-          if (mainFrame) mainFrame.focus();
-        }, 500);
-      }
+      // Treeitem itself is typically an <a> tag — click it directly
+      currentItem.click();
+      announce(`${currentItem.getAttribute('aria-label') ?? 'ページ'} を開きました`);
+      // After navigation, focus will be handled by page load
+      setTimeout(() => {
+        const mainFrame = document.querySelector('main.notion-frame') as HTMLElement | null;
+        if (mainFrame) mainFrame.focus();
+      }, 500);
       break;
     }
   }
