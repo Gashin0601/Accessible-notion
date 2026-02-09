@@ -5,7 +5,8 @@
   "description": "__MSG_extDescription__",
   "default_locale": "ja",
   "permissions": [
-    "storage"
+    "storage",
+    "management"
   ],
   "icons": {
     "128": "icons/icon128.png"
