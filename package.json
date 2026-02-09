@@ -1,5 +1,22 @@
 {
-  "dependencies": {
-    "sharp": "^0.33.5"
+  "name": "accessible-notion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension to make Notion accessible for screen reader users",
+  "scripts": {
+    "build": "node esbuild.config.mjs",
+    "watch": "node esbuild.config.mjs --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "clean": "rm -rf dist/"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.36",
+    "@vitest/coverage-v8": "^1.2.0",
+    "esbuild": "^0.20.0",
+    "jsdom": "^24.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.2.0"
   }
 }
