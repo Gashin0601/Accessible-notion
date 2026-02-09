@@ -1,0 +1,161 @@
+/**
+ * Keyboard Handler
+ *
+ * Registers global keyboard shortcuts (Alt+Shift+*) for the extension.
+ * Dispatches to the appropriate module based on the key combination.
+ */
+
+import { logDebug } from '../shared/logger';
+import { focusSidebar, focusMainContent, focusHeader } from './focus-manager';
+import { nextBlock, prevBlock, announceCurrentBlock, announceHeadingOutline } from './block-navigator';
+import { announce } from './live-announcer';
+import type { ExtensionSettings } from '../shared/constants';
+
+const MODULE = 'KeyboardHandler';
+
+type ShortcutAction = () => void;
+
+interface ShortcutBinding {
+  key: string;
+  action: ShortcutAction;
+  description: string;
+}
+
+const bindings: ShortcutBinding[] = [];
+
+function buildBindings(shortcuts: Record<string, string>): void {
+  bindings.length = 0;
+
+  const actionMap: Record<string, { action: ShortcutAction; description: string }> = {
+    focusSidebar: { action: focusSidebar, description: 'サイドバーにフォーカス移動' },
+    focusMain: { action: focusMainContent, description: 'メインコンテンツにフォーカス移動' },
+    focusHeader: { action: focusHeader, description: 'ヘッダーにフォーカス移動' },
+    announceBlock: { action: announceCurrentBlock, description: '現在のブロック情報を読み上げ' },
+    headingOutline: { action: announceHeadingOutline, description: '見出し構造を読み上げ' },
+    nextBlock: { action: nextBlock, description: '次のブロックへ移動' },
+    prevBlock: { action: prevBlock, description: '前のブロックへ移動' },
+    dbGridMode: { action: () => announce('データベースグリッドモード: 未実装'), description: 'DBグリッドモード' },
+    landmarkList: { action: announceLandmarks, description: 'ランドマーク一覧' },
+    help: { action: announceHelp, description: 'ヘルプ表示' },
+  };
+
+  for (const [name, keyCombo] of Object.entries(shortcuts)) {
+    const mapping = actionMap[name];
+    if (mapping) {
+      bindings.push({
+        key: normalizeKeyCombo(keyCombo),
+        action: mapping.action,
+        description: mapping.description,
+      });
+    }
+  }
+
+  logDebug(MODULE, `Registered ${bindings.length} keyboard shortcuts`);
+}
+
+/**
+ * Normalize a key combo string like "Alt+Shift+S" to a comparable format.
+ */
+function normalizeKeyCombo(combo: string): string {
+  return combo
+    .split('+')
+    .map(part => part.trim().toLowerCase())
+    .sort()
+    .join('+');
+}
+
+/**
+ * Build a key combo string from a KeyboardEvent.
+ */
+function eventToKeyCombo(event: KeyboardEvent): string {
+  const parts: string[] = [];
+  if (event.altKey) parts.push('alt');
+  if (event.ctrlKey) parts.push('ctrl');
+  if (event.metaKey) parts.push('meta');
+  if (event.shiftKey) parts.push('shift');
+
+  // Normalize key name
+  let key = event.key.toLowerCase();
+  if (key === '/') key = '/';
+
+  parts.push(key);
+  return parts.sort().join('+');
+}
+
+function handleKeydown(event: KeyboardEvent): void {
+  // Only handle when Alt+Shift is pressed (our prefix)
+  if (!event.altKey || !event.shiftKey) return;
+
+  const combo = eventToKeyCombo(event);
+
+  for (const binding of bindings) {
+    if (binding.key === combo) {
+      event.preventDefault();
+      event.stopPropagation();
+      logDebug(MODULE, `Shortcut triggered: ${binding.description}`);
+      binding.action();
+      return;
+    }
+  }
+}
+
+function announceLandmarks(): void {
+  const landmarks: string[] = [];
+
+  if (document.querySelector('nav.notion-sidebar-container')) {
+    landmarks.push('サイドバー ナビゲーション');
+  }
+  if (document.querySelector('main.notion-frame')) {
+    landmarks.push('メインコンテンツ');
+  }
+  if (document.querySelector('.notion-topbar, header')) {
+    landmarks.push('ヘッダー');
+  }
+  if (document.querySelector('.notion-peek-renderer')) {
+    landmarks.push('サイドピーク');
+  }
+
+  if (landmarks.length === 0) {
+    announce('ランドマークが見つかりません');
+  } else {
+    announce(`ランドマーク: ${landmarks.join(', ')}`);
+  }
+}
+
+function announceHelp(): void {
+  const helpLines: string[] = ['Accessible Notion ショートカット:'];
+  for (const binding of bindings) {
+    const original = Object.entries(currentShortcuts).find(
+      ([, v]) => normalizeKeyCombo(v) === binding.key,
+    );
+    const display = original ? original[1] : binding.key;
+    helpLines.push(`${display}: ${binding.description}`);
+  }
+  announce(helpLines.join('. '));
+}
+
+let currentShortcuts: Record<string, string> = {};
+
+/**
+ * Initialize the keyboard handler with settings.
+ */
+export function initKeyboardHandler(settings: ExtensionSettings): void {
+  currentShortcuts = { ...settings.shortcuts };
+  buildBindings(currentShortcuts);
+
+  document.addEventListener('keydown', handleKeydown, true);
+  logDebug(MODULE, 'Keyboard handler initialized');
+}
+
+/**
+ * Update shortcuts when settings change.
+ */
+export function updateShortcuts(shortcuts: Record<string, string>): void {
+  currentShortcuts = { ...shortcuts };
+  buildBindings(currentShortcuts);
+}
+
+export function destroyKeyboardHandler(): void {
+  document.removeEventListener('keydown', handleKeydown, true);
+  bindings.length = 0;
+}
