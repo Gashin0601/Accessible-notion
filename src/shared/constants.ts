@@ -1,0 +1,54 @@
+/** Extension marker attribute for elements modified by this extension */
+export const EXTENSION_ATTR = 'data-accessible-notion';
+
+/** Extension marker for live region */
+export const LIVE_REGION_ATTR = 'data-accessible-notion-live';
+
+/** Log prefix */
+export const LOG_PREFIX = '[AccessibleNotion]';
+
+/** Default settings */
+export const DEFAULT_SETTINGS: ExtensionSettings = {
+  enabled: true,
+  screenReader: 'nvda',
+  verbosity: 'standard',
+  features: {
+    sidebarTree: true,
+    blockNavigation: true,
+    contentEditableEnhance: true,
+    dbTableGrid: true,
+    liveAnnouncer: true,
+    searchDialog: true,
+    comments: true,
+  },
+  shortcuts: {
+    focusSidebar: 'Alt+Shift+S',
+    focusMain: 'Alt+Shift+M',
+    focusHeader: 'Alt+Shift+H',
+    announceBlock: 'Alt+Shift+B',
+    headingOutline: 'Alt+Shift+T',
+    nextBlock: 'Alt+Shift+N',
+    prevBlock: 'Alt+Shift+P',
+    dbGridMode: 'Alt+Shift+D',
+    landmarkList: 'Alt+Shift+L',
+    help: 'Alt+Shift+/',
+  },
+  debugMode: false,
+};
+
+export interface ExtensionSettings {
+  enabled: boolean;
+  screenReader: 'nvda' | 'jaws' | 'voiceover' | 'other';
+  verbosity: 'minimal' | 'standard' | 'verbose';
+  features: {
+    sidebarTree: boolean;
+    blockNavigation: boolean;
+    contentEditableEnhance: boolean;
+    dbTableGrid: boolean;
+    liveAnnouncer: boolean;
+    searchDialog: boolean;
+    comments: boolean;
+  };
+  shortcuts: Record<string, string>;
+  debugMode: boolean;
+}

@@ -1,0 +1,8 @@
+{
+  "extName": {
+    "message": "Accessible Notion"
+  },
+  "extDescription": {
+    "message": "Notionをスクリーンリーダーに対応させるChrome拡張機能"
+  }
+}
