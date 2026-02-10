@@ -457,5 +457,18 @@
       </p>
     </div>
   </footer>
+  <script>
+    // Detect Mac and replace "Alt" with "⌥" in kbd elements
+    if (/Mac|iPhone|iPad|iPod/.test(navigator.platform)) {
+      document.querySelectorAll('kbd').forEach(function(kbd) {
+        kbd.textContent = kbd.textContent.replace(/Alt\+/g, '⌥+');
+      });
+      // Update the description text too
+      var desc = document.querySelector('#shortcuts-heading + .section-desc');
+      if (desc) {
+        desc.innerHTML = 'すべてのショートカットは <kbd>⌥ Option</kbd>+<kbd>Shift</kbd> をプレフィックスとして使用します';
+      }
+    }
+  </script>
 </body>
 </html>
