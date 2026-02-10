@@ -11,7 +11,7 @@ import { logDebug, logError, logInfo, setDebugMode } from '../shared/logger';
 import { loadSettings, onSettingsChanged } from '../shared/storage';
 
 import { initLiveAnnouncer, announce, destroyLiveAnnouncer } from './live-announcer';
-import { scanAndEnhance, enhanceBlock, enhanceTextbox, enhanceImage } from './aria-injector';
+import { scanAndEnhance, enhanceBlock, enhanceTextbox, enhanceImage, enhanceInlineLinks } from './aria-injector';
 import { initTreeEnhancer, enhanceTreeItems, destroyTreeEnhancer } from './tree-enhancer';
 import { resetBlockNavigation } from './block-navigator';
 import { initKeyboardHandler, updateShortcuts, destroyKeyboardHandler } from './keyboard-handler';
@@ -94,16 +94,22 @@ async function init(): Promise<void> {
     // 9. Popup / menu enhancement (slash commands, mentions, etc.)
     initPopupEnhancer();
 
-    // 10. Topbar landmark enhancement
+    // 10. Main landmarks & skip navigation
+    enhanceMainLandmarks();
+
+    // 11. Topbar landmark enhancement
     enhanceTopbar();
 
-    // 11. Start DOM observer for ongoing changes
+    // 12. Side peek enhancement
+    enhanceSidePeek();
+
+    // 13. Start DOM observer for ongoing changes
     startObserver();
 
-    // 12. Settings change listener
+    // 14. Settings change listener
     onSettingsChanged(handleSettingsChange);
 
-    // 13. SPA navigation detection
+    // 15. SPA navigation detection
     startNavigationDetection();
 
     logInfo(MODULE, 'Initialization complete');
@@ -198,6 +204,9 @@ function processNewNodes(mutations: MutationRecord[]): void {
 
   // Re-enhance topbar/breadcrumb if they were re-rendered
   enhanceTopbar();
+
+  // Side peek may have opened
+  enhanceSidePeek();
 }
 
 /**
@@ -215,6 +224,9 @@ function startNavigationDetection(): void {
 }
 
 function handlePageChange(): void {
+  // Announce loading state for screen readers
+  announce('ページを読み込み中…');
+
   // Re-run enhancement on page change
   resetBlockNavigation();
 
@@ -230,6 +242,7 @@ function handlePageChange(): void {
     }
 
     enhanceTopbar();
+    enhanceSidePeek();
 
     // Extract page title for announcement
     const titleEl = document.querySelector('.notion-page-block h1, [class*="page-title"]');
@@ -275,6 +288,9 @@ function teardown(): void {
   destroyPopupEnhancer();
   destroyLiveAnnouncer();
 
+  // Remove skip nav link
+  document.getElementById('an-skip-nav')?.remove();
+
   // Remove all injected attributes
   const enhanced = document.querySelectorAll(`[${EXTENSION_ATTR}]`);
   for (const el of enhanced) {
@@ -287,6 +303,82 @@ function teardown(): void {
 /** Request DOMLock protection for an element's ARIA attributes */
 function protect(el: Element): void {
   el.dispatchEvent(new CustomEvent('accessible-notion-protect', { bubbles: false }));
+}
+
+// ─── Skip navigation & main landmark ─────────────────────────
+function enhanceMainLandmarks(): void {
+  // Ensure main frame has role="main"
+  const mainFrame = document.querySelector<HTMLElement>('main.notion-frame');
+  if (mainFrame && !mainFrame.getAttribute('aria-label')) {
+    mainFrame.setAttribute('aria-label', 'メインコンテンツ');
+    protect(mainFrame);
+  }
+
+  // Create skip navigation link if not exists
+  if (!document.getElementById('an-skip-nav')) {
+    const skipLink = document.createElement('a');
+    skipLink.id = 'an-skip-nav';
+    skipLink.href = '#';
+    skipLink.textContent = 'メインコンテンツにスキップ';
+    skipLink.setAttribute('style',
+      'position:fixed;top:-100px;left:0;z-index:100000;' +
+      'background:#2383e2;color:#fff;padding:8px 16px;font-size:14px;' +
+      'text-decoration:none;border-radius:0 0 4px 0;' +
+      'transition:top 0.2s ease-in-out;');
+    skipLink.addEventListener('focus', () => {
+      skipLink.style.top = '0';
+    });
+    skipLink.addEventListener('blur', () => {
+      skipLink.style.top = '-100px';
+    });
+    skipLink.addEventListener('click', (e) => {
+      e.preventDefault();
+      focusMainContent();
+    });
+    document.body.prepend(skipLink);
+    logDebug(MODULE, 'Skip navigation link added');
+  }
+
+  // Enhance page content area with region role
+  const pageContent = document.querySelector<HTMLElement>('.notion-page-content');
+  if (pageContent && !pageContent.getAttribute('role')) {
+    pageContent.setAttribute('role', 'region');
+    pageContent.setAttribute('aria-label', 'ページコンテンツ');
+    protect(pageContent);
+  }
+}
+
+// ─── Side peek (page preview) enhancement ────────────────────
+function enhanceSidePeek(): void {
+  const peek = document.querySelector<HTMLElement>('.notion-peek-renderer');
+  if (!peek || peek.hasAttribute(EXTENSION_ATTR + '-peek')) return;
+
+  peek.setAttribute('role', 'complementary');
+  peek.setAttribute('aria-label', 'サイドピーク');
+
+  // Try to find the page title within the peek
+  const title = peek.querySelector<HTMLElement>(
+    '.notion-page-block h1, [class*="page-title"], [placeholder*="Untitled"], [placeholder*="無題"]',
+  );
+  const titleText = title?.textContent?.trim();
+  if (titleText) {
+    peek.setAttribute('aria-label', `サイドピーク: ${titleText}`);
+  }
+
+  // Make the peek region focusable
+  if (!peek.hasAttribute('tabindex')) {
+    peek.setAttribute('tabindex', '-1');
+  }
+
+  // Enhance close button
+  const closeBtn = peek.querySelector<HTMLElement>('[class*="close"], [aria-label*="Close"]');
+  if (closeBtn && !closeBtn.getAttribute('aria-label')) {
+    closeBtn.setAttribute('aria-label', '閉じる');
+  }
+
+  peek.setAttribute(EXTENSION_ATTR + '-peek', 'true');
+  protect(peek);
+  logDebug(MODULE, 'Side peek enhanced:', titleText ?? 'untitled');
 }
 
 // ─── Topbar / breadcrumb enhancement ────────────────────────

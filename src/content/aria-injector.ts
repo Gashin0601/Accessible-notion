@@ -480,6 +480,126 @@ export function enhanceImage(img: HTMLImageElement): void {
 }
 
 /**
+ * Map of common Notion SVG icon class names to Japanese labels.
+ * Used to label icon-only buttons that lack text content.
+ */
+const ICON_BUTTON_LABELS: Record<string, string> = {
+  xMarkSmall: '閉じる',
+  xMark: '閉じる',
+  plus: '追加',
+  plusSmall: '追加',
+  plusCircle: '新規追加',
+  trash: '削除',
+  trashSmall: '削除',
+  copy: 'コピー',
+  duplicate: '複製',
+  moveTo: '移動',
+  pin: 'ピン留め',
+  star: 'お気に入り',
+  starFilled: 'お気に入り済み',
+  share: '共有',
+  lock: 'ロック',
+  unlock: 'ロック解除',
+  settings: '設定',
+  gear: '設定',
+  search: '検索',
+  filter: 'フィルター',
+  sort: '並べ替え',
+  arrowLeft: '戻る',
+  arrowRight: '進む',
+  chevronRight: '展開',
+  chevronDown: '折りたたむ',
+  arrowUpRight: '外部リンクで開く',
+  maximize: '全画面',
+  minimize: '縮小',
+  moreHorizontal: 'その他',
+  ellipsis: 'その他',
+  ellipsisSmall: 'その他',
+  refresh: '更新',
+  undo: '元に戻す',
+  redo: 'やり直す',
+  clock: '履歴',
+  calendar: 'カレンダー',
+  download: 'ダウンロード',
+  upload: 'アップロード',
+  link: 'リンク',
+  unlink: 'リンク解除',
+  eye: '表示',
+  eyeOff: '非表示',
+  dragHandle: 'ドラッグハンドル',
+};
+
+/**
+ * Enhance unlabeled icon-only buttons throughout the page.
+ * Finds role="button" elements that have no text and no aria-label,
+ * then attempts to label them using their SVG icon class name.
+ */
+export function enhanceIconButtons(): void {
+  const buttons = document.querySelectorAll<HTMLElement>(
+    '[role="button"]:not([aria-label]), button:not([aria-label]):not([title])',
+  );
+
+  for (const btn of buttons) {
+    if (isMarked(btn)) continue;
+    const text = btn.textContent?.trim();
+    if (text) continue; // Has text, skip
+
+    const svg = btn.querySelector('svg');
+    if (!svg) continue;
+
+    const cls = svg.getAttribute('class') ?? '';
+    for (const token of cls.split(/\s+/)) {
+      if (token in ICON_BUTTON_LABELS) {
+        btn.setAttribute('aria-label', ICON_BUTTON_LABELS[token]);
+        mark(btn);
+        break;
+      }
+    }
+  }
+}
+
+/**
+ * Enhance inline page links and mentions within blocks.
+ * Notion renders @mentions and [[page links]] as <a> elements with specific classes.
+ */
+export function enhanceInlineLinks(): void {
+  // Page mentions: <a> elements linking to notion pages within content
+  const pageLinks = document.querySelectorAll<HTMLAnchorElement>(
+    '.notion-page-content a[href*="notion.so"], .notion-page-content a[data-token-index]',
+  );
+  for (const link of pageLinks) {
+    if (isMarked(link)) continue;
+    const text = link.textContent?.trim();
+    if (!text) continue;
+
+    // Check if it's a user mention (has avatar/icon)
+    const hasAvatar = link.querySelector('img, [class*="avatar"]');
+    if (hasAvatar) {
+      link.setAttribute('aria-label', `メンション: ${text}`);
+    } else if (link.href.includes('notion.so')) {
+      // Page link — only add prefix if not already labeled
+      if (!link.getAttribute('aria-label')) {
+        link.setAttribute('aria-label', `ページリンク: ${text}`);
+      }
+    }
+    mark(link);
+  }
+
+  // Date mentions: Notion renders dates as inline elements
+  const dateMentions = document.querySelectorAll<HTMLElement>(
+    '.notion-page-content [class*="date-mention"], .notion-page-content [class*="inline-date"]',
+  );
+  for (const dateMention of dateMentions) {
+    if (isMarked(dateMention)) continue;
+    const text = dateMention.textContent?.trim();
+    if (text && !dateMention.getAttribute('aria-label')) {
+      dateMention.setAttribute('aria-label', `日付: ${text}`);
+    }
+    mark(dateMention);
+  }
+}
+
+/**
  * Run a full scan of the page and enhance all discoverable elements.
  */
 export function scanAndEnhance(): number {
@@ -509,6 +629,12 @@ export function scanAndEnhance(): number {
     enhanceImage(img);
     count++;
   }
+
+  // Inline links and mentions
+  enhanceInlineLinks();
+
+  // Icon-only buttons
+  enhanceIconButtons();
 
   logDebug(MODULE, `Scan complete: ${count} elements enhanced`);
   return count;
