@@ -77,6 +77,21 @@ function normalizeKeyCombo(combo: string): string {
 }
 
 /**
+ * Map KeyboardEvent.code to the base key name used in shortcut strings.
+ * On Mac, Option+Shift+key produces composed characters (e.g., "Í" for S),
+ * so event.key is unreliable when altKey is true. event.code gives the
+ * physical key regardless of modifiers.
+ */
+function codeToBaseKey(code: string): string | null {
+  if (code.startsWith('Key')) return code.slice(3).toLowerCase();
+  if (code.startsWith('Digit')) return code.slice(5);
+  if (code === 'Slash') return '/';
+  if (code === 'Home') return 'home';
+  if (code === 'End') return 'end';
+  return null;
+}
+
+/**
  * Build a key combo string from a KeyboardEvent.
  */
 function eventToKeyCombo(event: KeyboardEvent): string {
@@ -86,9 +101,13 @@ function eventToKeyCombo(event: KeyboardEvent): string {
   if (event.metaKey) parts.push('meta');
   if (event.shiftKey) parts.push('shift');
 
-  // Normalize key name
+  // On Mac, Option(Alt)+key produces composed characters in event.key.
+  // Use event.code to get the physical key when Alt is held.
   let key = event.key.toLowerCase();
-  if (key === '/') key = '/';
+  if (event.altKey && event.code) {
+    const base = codeToBaseKey(event.code);
+    if (base) key = base;
+  }
 
   parts.push(key);
   return parts.sort().join('+');
