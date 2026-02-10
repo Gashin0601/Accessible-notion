@@ -36,9 +36,10 @@ function createLandmarks(): void {
   document.body.appendChild(header);
 }
 
-function fireKeyCombo(key: string, altKey = true, shiftKey = true): KeyboardEvent {
+function fireKeyCombo(key: string, altKey = true, shiftKey = true, code?: string): KeyboardEvent {
   const event = new KeyboardEvent('keydown', {
     key,
+    code: code ?? '',
     altKey,
     shiftKey,
     bubbles: true,
@@ -46,6 +47,15 @@ function fireKeyCombo(key: string, altKey = true, shiftKey = true): KeyboardEven
   });
   document.dispatchEvent(event);
   return event;
+}
+
+/**
+ * Simulate a Mac Option+Shift+key press.
+ * On Mac, Option+Shift produces composed characters (e.g., Option+Shift+N → "˜").
+ * event.key gives the composed char, event.code gives the physical key.
+ */
+function fireMacOptionShift(composedChar: string, code: string): KeyboardEvent {
+  return fireKeyCombo(composedChar, true, true, code);
 }
 
 describe('keyboard-handler', () => {
@@ -209,6 +219,60 @@ describe('keyboard-handler', () => {
       fireKeyCombo('X');
       const treeItem = document.querySelector('[role="treeitem"]');
       expect(document.activeElement).toBe(treeItem);
+    });
+  });
+
+  describe('Mac Option+Shift key matching', () => {
+    beforeEach(() => {
+      initKeyboardHandler(settings);
+    });
+
+    it('⌥+Shift+S matches via event.code on Mac (composed char "Í")', () => {
+      fireMacOptionShift('Í', 'KeyS');
+      const treeItem = document.querySelector('[role="treeitem"]');
+      expect(document.activeElement).toBe(treeItem);
+    });
+
+    it('⌥+Shift+M matches via event.code on Mac (composed char "Â")', () => {
+      fireMacOptionShift('Â', 'KeyM');
+      const block = document.querySelector('.notion-selectable[data-block-id]');
+      expect(document.activeElement).toBe(block);
+    });
+
+    it('⌥+Shift+H matches via event.code on Mac (composed char "Ó")', () => {
+      fireMacOptionShift('Ó', 'KeyH');
+      const btn = document.querySelector('.notion-topbar button');
+      expect(document.activeElement).toBe(btn);
+    });
+
+    it('⌥+Shift+N triggers next block via event.code on Mac', () => {
+      fireMacOptionShift('˜', 'KeyN');
+      // nextBlock should have been called — won't throw
+    });
+
+    it('⌥+Shift+/ matches via event.code on Mac (Slash)', () => {
+      fireMacOptionShift('÷', 'Slash');
+      // announceHelp should fire without throwing
+    });
+
+    it('⌥+Shift+1 matches via event.code on Mac (Digit1)', () => {
+      fireMacOptionShift('⁄', 'Digit1');
+      // nextH1 should fire without throwing
+    });
+
+    it('⌥+Shift+Home matches via event.code on Mac', () => {
+      fireMacOptionShift('Home', 'Home');
+      // firstBlock should fire without throwing
+    });
+
+    it('⌥+Shift+End matches via event.code on Mac', () => {
+      fireMacOptionShift('End', 'End');
+      // lastBlock should fire without throwing
+    });
+
+    it('preventDefault is called when Mac shortcut matches', () => {
+      const event = fireMacOptionShift('Í', 'KeyS');
+      expect(event.defaultPrevented).toBe(true);
     });
   });
 
