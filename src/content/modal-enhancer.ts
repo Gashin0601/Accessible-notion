@@ -80,6 +80,134 @@ function removeFocusTrap(): void {
 }
 
 /**
+ * Detect dialog type for more specific labeling.
+ */
+function detectDialogType(dialog: HTMLElement): string {
+  const text = dialog.textContent ?? '';
+
+  // Share dialog
+  if (text.includes('共有') || text.includes('Share') || text.includes('リンクをコピー') || text.includes('Copy link')) {
+    return 'share';
+  }
+  // Settings dialog
+  if (text.includes('設定') || text.includes('Settings') || text.includes('Preferences')) {
+    return 'settings';
+  }
+  // Import/Export dialog
+  if (text.includes('インポート') || text.includes('エクスポート') || text.includes('Import') || text.includes('Export')) {
+    return 'import-export';
+  }
+  // Template dialog
+  if (text.includes('テンプレート') || text.includes('Template')) {
+    return 'template';
+  }
+  // Date picker dialog (contains calendar grid)
+  if (dialog.querySelector('.notion-calendar, [class*="calendar"]') || (text.includes('今日') && text.includes('明日'))) {
+    return 'date-picker';
+  }
+  // Properties dialog
+  if (text.includes('プロパティ') || text.includes('Properties') || text.includes('Property type')) {
+    return 'properties';
+  }
+
+  return 'generic';
+}
+
+/**
+ * Get specific label for dialog type.
+ */
+function getDialogLabel(type: string): string {
+  switch (type) {
+    case 'share': return '共有';
+    case 'settings': return '設定';
+    case 'import-export': return 'インポート/エクスポート';
+    case 'template': return 'テンプレート';
+    case 'date-picker': return '日付選択';
+    case 'properties': return 'プロパティ設定';
+    default: return '';
+  }
+}
+
+/**
+ * Enhance specific dialog types with deeper ARIA semantics.
+ */
+function enhanceDialogByType(dialog: HTMLElement, type: string): void {
+  switch (type) {
+    case 'share':
+      enhanceShareDialog(dialog);
+      break;
+    case 'date-picker':
+      enhanceDatePicker(dialog);
+      break;
+  }
+}
+
+function enhanceShareDialog(dialog: HTMLElement): void {
+  // Share dialog has: copy link button, user list, permission dropdowns
+  const inputs = dialog.querySelectorAll<HTMLElement>('input');
+  inputs.forEach((input) => {
+    if (!input.getAttribute('aria-label')) {
+      const placeholder = input.getAttribute('placeholder') ?? '';
+      if (placeholder.includes('メール') || placeholder.includes('email') || placeholder.includes('ユーザー')) {
+        input.setAttribute('aria-label', 'ユーザーまたはメールを追加');
+      } else if (placeholder) {
+        input.setAttribute('aria-label', placeholder);
+      }
+    }
+  });
+
+  // Permission dropdowns
+  const dropdowns = dialog.querySelectorAll<HTMLElement>('[role="button"]');
+  dropdowns.forEach((btn) => {
+    const text = btn.textContent?.trim() ?? '';
+    if ((text.includes('編集') || text.includes('閲覧') || text.includes('フルアクセス') || text.includes('can edit') || text.includes('can view')) && !btn.getAttribute('aria-label')) {
+      btn.setAttribute('aria-label', `アクセス権限: ${text}`);
+      btn.setAttribute('aria-haspopup', 'listbox');
+    }
+  });
+
+  logDebug(MODULE, 'Enhanced share dialog');
+}
+
+function enhanceDatePicker(dialog: HTMLElement): void {
+  // Date picker has a calendar grid, today button, month navigation
+  const calGrid = dialog.querySelector<HTMLElement>('.notion-calendar, [class*="calendar-view"], table');
+  if (calGrid) {
+    calGrid.setAttribute('role', 'grid');
+    calGrid.setAttribute('aria-label', 'カレンダー');
+
+    // Day cells
+    const cells = calGrid.querySelectorAll<HTMLElement>('td, [class*="day"]');
+    cells.forEach((cell) => {
+      if (!cell.getAttribute('role')) {
+        cell.setAttribute('role', 'gridcell');
+      }
+      // Make focusable
+      if (!cell.hasAttribute('tabindex')) {
+        cell.setAttribute('tabindex', '-1');
+      }
+    });
+  }
+
+  // Navigation buttons (prev/next month)
+  const navButtons = dialog.querySelectorAll<HTMLElement>('button, [role="button"]');
+  navButtons.forEach((btn) => {
+    const text = btn.textContent?.trim() ?? '';
+    if (!btn.getAttribute('aria-label')) {
+      if (text === '今日' || text === 'Today') {
+        btn.setAttribute('aria-label', '今日');
+      } else if (text === '明日' || text === 'Tomorrow') {
+        btn.setAttribute('aria-label', '明日');
+      } else if (text === '昨日' || text === 'Yesterday') {
+        btn.setAttribute('aria-label', '昨日');
+      }
+    }
+  });
+
+  logDebug(MODULE, 'Enhanced date picker dialog');
+}
+
+/**
  * Enhance a dialog element with focus management and labeling.
  */
 function enhanceDialog(dialog: HTMLElement): void {
@@ -98,9 +226,16 @@ function enhanceDialog(dialog: HTMLElement): void {
     if (titleEl?.textContent?.trim()) {
       dialog.setAttribute('aria-label', titleEl.textContent.trim());
     } else {
-      dialog.setAttribute('aria-label', 'ダイアログ');
+      // No title element found — use type detection as fallback
+      const dialogType = detectDialogType(dialog);
+      const specificLabel = getDialogLabel(dialogType);
+      dialog.setAttribute('aria-label', specificLabel || 'ダイアログ');
     }
   }
+
+  // Apply type-specific enhancements regardless of label source
+  const dialogType = detectDialogType(dialog);
+  enhanceDialogByType(dialog, dialogType);
 
   // Set aria-modal
   dialog.setAttribute('aria-modal', 'true');

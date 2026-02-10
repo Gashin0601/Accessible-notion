@@ -401,21 +401,235 @@ function reEnhanceActivePopup(): void {
   enhanceCategoryGroups(listbox, popup.getAttribute(POPUP_MARKER) as PopupType ?? 'generic');
 }
 
+// ─── Inline Toolbar Enhancement ─────────────────────────────
+/**
+ * Notion inline toolbar button label map.
+ * Keys are SVG path identifiers or text content for matching.
+ */
+const TOOLBAR_BUTTON_LABELS: Record<string, string> = {
+  '文章を改善する': 'AIで文章を改善する',
+  'AIに依頼': 'AIに依頼',
+  'コメント': 'コメント',
+  'リンク': 'リンク',
+};
+
+/** SVG icon heuristics for toolbar buttons (by viewBox or path characteristics) */
+const TOOLBAR_ICON_LABELS: Array<{ test: (svg: SVGElement) => boolean; label: string }> = [
+  { test: (svg) => svg.innerHTML.includes('M') && svg.innerHTML.includes('font-weight') || false, label: '太字 (Ctrl+B)' },
+  { test: (svg) => svg.innerHTML.includes('font-style: italic') || false, label: 'イタリック (Ctrl+I)' },
+  { test: (svg) => svg.innerHTML.includes('text-decoration: line-through') || false, label: '取り消し線 (Ctrl+Shift+S)' },
+  { test: (svg) => svg.innerHTML.includes('underline') || false, label: '下線 (Ctrl+U)' },
+  { test: (svg) => svg.innerHTML.includes('code') || false, label: 'コード (Ctrl+E)' },
+];
+
+/**
+ * Enhance the inline text formatting toolbar (.notion-text-action-menu).
+ */
+function enhanceInlineToolbar(toolbar: HTMLElement): void {
+  if (toolbar.hasAttribute(POPUP_MARKER)) return;
+
+  toolbar.setAttribute('role', 'toolbar');
+  toolbar.setAttribute('aria-label', 'テキスト書式設定ツールバー');
+
+  // Find button container — it's nested ~2 levels deep and has the most children
+  const buttonContainer = findButtonContainer(toolbar);
+  if (!buttonContainer) return;
+
+  for (let i = 0; i < buttonContainer.children.length; i++) {
+    const child = buttonContainer.children[i] as HTMLElement;
+    if (!child) continue;
+
+    const rect = child.getBoundingClientRect();
+
+    // Skip separators (width <= 2)
+    if (rect.width <= 2) continue;
+
+    // Skip hidden elements (data-popup-origin with 0 size)
+    if (rect.width === 0 && rect.height === 0) continue;
+
+    const text = child.textContent?.trim() ?? '';
+    const role = child.getAttribute('role');
+
+    // Ensure role="button" for interactive elements
+    if (!role && rect.width > 20) {
+      child.setAttribute('role', 'button');
+      child.setAttribute('tabindex', '0');
+    }
+
+    // Add aria-label if missing
+    if (!child.getAttribute('aria-label')) {
+      // Try text-based label
+      if (text && TOOLBAR_BUTTON_LABELS[text]) {
+        child.setAttribute('aria-label', TOOLBAR_BUTTON_LABELS[text]);
+      } else if (text && text.length < 30) {
+        child.setAttribute('aria-label', text);
+      } else {
+        // Try SVG-based label (icon buttons)
+        const svg = child.querySelector('svg');
+        if (svg) {
+          const iconLabel = guessIconLabel(child, i, buttonContainer);
+          if (iconLabel) {
+            child.setAttribute('aria-label', iconLabel);
+          }
+        }
+      }
+    }
+  }
+
+  toolbar.setAttribute(POPUP_MARKER, 'toolbar');
+  logDebug(MODULE, 'Enhanced inline toolbar');
+}
+
+/**
+ * Guess the label for an icon-only toolbar button based on position and content.
+ * Position-based since Notion's toolbar follows a consistent order.
+ */
+function guessIconLabel(button: HTMLElement, index: number, container: HTMLElement): string {
+  // Count visible buttons (non-separator, non-hidden) up to this index
+  let visibleIdx = 0;
+  for (let i = 0; i < index; i++) {
+    const child = container.children[i] as HTMLElement;
+    if (!child) continue;
+    const r = child.getBoundingClientRect();
+    if (r.width > 2 && r.width > 0 && r.height > 0) visibleIdx++;
+  }
+
+  // Check if button has aria-haspopup or dropdown indicator
+  const hasPopup = button.getAttribute('aria-haspopup') || button.querySelector('[class*="chevron"], [class*="arrow"]');
+
+  // Look for distinctive text content
+  const text = button.textContent?.trim();
+  if (text) {
+    if (text === 'A') return 'テキストカラー';
+    if (text.includes('⋮') || text === '...') return 'その他のオプション';
+  }
+
+  // Font style buttons are typically icon-only SVG buttons
+  // Order after AI/comment/separator buttons
+  const iconLabels = [
+    '太字',
+    'イタリック',
+    '下線',
+    '取り消し線',
+    'コード',
+    'リンク',
+    'テキストカラー',
+    'その他',
+  ];
+
+  // Icon buttons start after the text-labeled buttons and separators
+  // This is a fallback — position-based guessing
+  if (visibleIdx >= 3 && visibleIdx - 3 < iconLabels.length) {
+    return iconLabels[visibleIdx - 3];
+  }
+
+  return '書式ボタン';
+}
+
+function findButtonContainer(toolbar: HTMLElement): HTMLElement | null {
+  // Find the deepest element with the most children (the button row)
+  let best: HTMLElement | null = null;
+  let bestCount = 0;
+
+  function walk(el: HTMLElement, depth: number): void {
+    if (depth > 5) return;
+    if (el.children.length > bestCount) {
+      bestCount = el.children.length;
+      best = el;
+    }
+    for (const child of el.children) {
+      if (child instanceof HTMLElement) walk(child, depth + 1);
+    }
+  }
+
+  walk(toolbar, 0);
+  return bestCount >= 5 ? best : null;
+}
+
+// ─── DB Filter/Sort Enhancement ─────────────────────────────
+/**
+ * Enhance filter/sort popups that Notion renders in dialogs.
+ * These popups contain property selectors, operator selectors, and value inputs.
+ */
+function enhanceFilterSortPopup(dialog: HTMLElement): void {
+  // Filter popups have "フィルター" or "Filter" in their content
+  const text = dialog.textContent ?? '';
+  const isFilter = text.includes('フィルター') || text.includes('Filter');
+  const isSort = text.includes('並べ替え') || text.includes('Sort');
+
+  if (!isFilter && !isSort) return;
+
+  const label = isFilter ? 'フィルター設定' : '並べ替え設定';
+  dialog.setAttribute('aria-label', label);
+
+  // Enhance select/dropdown controls within the filter
+  const selects = dialog.querySelectorAll<HTMLElement>('[role="button"], [role="combobox"]');
+  selects.forEach((sel) => {
+    if (!sel.getAttribute('aria-label')) {
+      const text = sel.textContent?.trim();
+      if (text) sel.setAttribute('aria-label', text);
+    }
+  });
+
+  // Enhance input fields
+  const inputs = dialog.querySelectorAll<HTMLElement>('input, [contenteditable="true"]');
+  inputs.forEach((input) => {
+    if (!input.getAttribute('aria-label')) {
+      const placeholder = input.getAttribute('placeholder');
+      if (placeholder) {
+        input.setAttribute('aria-label', placeholder);
+      } else {
+        input.setAttribute('aria-label', 'フィルター値');
+      }
+    }
+  });
+
+  // Enhance remove buttons
+  const removeButtons = dialog.querySelectorAll<HTMLElement>('[role="button"]');
+  removeButtons.forEach((btn) => {
+    const text = btn.textContent?.trim();
+    if (text === '×' || text === '✕' || btn.querySelector('svg')) {
+      if (!btn.getAttribute('aria-label')) {
+        // Check if it looks like a close/remove button
+        const rect = btn.getBoundingClientRect();
+        if (rect.width < 30 && rect.height < 30) {
+          btn.setAttribute('aria-label', 'フィルターを削除');
+        }
+      }
+    }
+  });
+
+  logDebug(MODULE, `Enhanced ${label} popup`);
+}
+
 export function initPopupEnhancer(): void {
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
-      // Added nodes — look for new dialogs
+      // Added nodes — look for new dialogs and toolbars
       for (const node of mutation.addedNodes) {
         if (!(node instanceof HTMLElement)) continue;
 
+        // Inline toolbar
+        if (node.matches('.notion-text-action-menu')) {
+          setTimeout(() => enhanceInlineToolbar(node), 50);
+        }
+        const toolbars = node.querySelectorAll<HTMLElement>('.notion-text-action-menu');
+        toolbars.forEach((t) => setTimeout(() => enhanceInlineToolbar(t), 50));
+
+        // Dialogs
         if (node.matches('[role="dialog"]')) {
-          // Delay slightly to let Notion finish rendering the popup content
-          setTimeout(() => enhancePopup(node), 50);
+          setTimeout(() => {
+            enhancePopup(node);
+            enhanceFilterSortPopup(node);
+          }, 50);
         }
         const dialogs = node.querySelectorAll<HTMLElement>('[role="dialog"]');
-        dialogs.forEach((d) => setTimeout(() => enhancePopup(d), 50));
+        dialogs.forEach((d) => setTimeout(() => {
+          enhancePopup(d);
+          enhanceFilterSortPopup(d);
+        }, 50));
       }
 
       // Removed nodes — detect popup closure

@@ -195,6 +195,9 @@ function processNewNodes(mutations: MutationRecord[]): void {
       }
     }
   }
+
+  // Re-enhance topbar/breadcrumb if they were re-rendered
+  enhanceTopbar();
 }
 
 /**
@@ -281,6 +284,11 @@ function teardown(): void {
   logInfo(MODULE, 'Extension disabled and cleaned up');
 }
 
+/** Request DOMLock protection for an element's ARIA attributes */
+function protect(el: Element): void {
+  el.dispatchEvent(new CustomEvent('accessible-notion-protect', { bubbles: false }));
+}
+
 // ─── Topbar / breadcrumb enhancement ────────────────────────
 function enhanceTopbar(): void {
   // Add banner role to topbar
@@ -288,6 +296,7 @@ function enhanceTopbar(): void {
   if (topbar && !topbar.getAttribute('role')) {
     topbar.setAttribute('role', 'banner');
     topbar.setAttribute('aria-label', 'ページヘッダー');
+    protect(topbar);
     logDebug(MODULE, 'Topbar enhanced with role=banner');
   }
 
@@ -297,6 +306,7 @@ function enhanceTopbar(): void {
     if (!breadcrumb.getAttribute('role')) {
       breadcrumb.setAttribute('role', 'navigation');
       breadcrumb.setAttribute('aria-label', 'パンくずリスト');
+      protect(breadcrumb);
     }
 
     // Mark breadcrumb links with proper semantics
@@ -305,10 +315,12 @@ function enhanceTopbar(): void {
       const text = link.textContent?.trim();
       if (text && !link.getAttribute('aria-label')) {
         link.setAttribute('aria-label', text);
+        protect(link);
       }
       // Mark the last breadcrumb as current page
       if (idx === links.length - 1) {
         link.setAttribute('aria-current', 'page');
+        protect(link);
       }
     });
 
@@ -357,6 +369,7 @@ function enhanceSidebarSections(): void {
     if (section && !section.getAttribute('aria-label')) {
       section.setAttribute('role', 'group');
       section.setAttribute('aria-label', label);
+      protect(section);
     }
   }
 

@@ -95,6 +95,11 @@ export function enhanceBlock(block: Element): void {
     enhanceCodeBlock(block);
   }
 
+  // Callout block: detect icon/type
+  if (blockType === 'callout-block') {
+    enhanceCallout(block, rdLabel);
+  }
+
   // Bookmark block: extract URL/title
   if (blockType === 'bookmark-block') {
     enhanceBookmark(block);
@@ -108,6 +113,31 @@ export function enhanceBlock(block: Element): void {
   // Equation block: extract formula text
   if (blockType === 'equation-block') {
     enhanceEquation(block, rdLabel);
+  }
+
+  // Video block: extract iframe title or video source
+  if (blockType === 'video-block') {
+    enhanceVideoBlock(block, rdLabel);
+  }
+
+  // Embed block: extract iframe title or service name
+  if (blockType === 'embed-block') {
+    enhanceEmbedBlock(block, rdLabel);
+  }
+
+  // Simple table block: inject table semantics
+  if (blockType === 'table-block') {
+    enhanceSimpleTable(block);
+  }
+
+  // Synced block: indicate synced status
+  if (blockType === 'synced_block-block') {
+    enhanceSyncedBlock(block, rdLabel);
+  }
+
+  // Table of contents: enhance with heading count
+  if (blockType === 'table_of_contents-block') {
+    enhanceTableOfContents(block, rdLabel);
   }
 
   // Column layout: column count
@@ -166,6 +196,20 @@ function getDbTitle(block: Element): string {
   return '';
 }
 
+function enhanceCallout(block: Element, rdLabel: string): void {
+  // Callout blocks have an icon (emoji or image) + text
+  // Try to find the icon
+  const iconEl = block.querySelector<HTMLElement>('.notion-record-icon, [class*="callout-icon"], :scope > div:first-child [role="img"]');
+  const icon = iconEl?.textContent?.trim() ?? iconEl?.getAttribute('aria-label') ?? '';
+  const text = getBlockText(block, 60);
+
+  if (icon && text) {
+    block.setAttribute('aria-label', `${rdLabel} ${icon}: ${text}`);
+  } else if (text) {
+    block.setAttribute('aria-label', `${rdLabel}: ${text}`);
+  }
+}
+
 function enhanceCodeBlock(block: Element): void {
   // Notion code blocks have a language selector — try to find the language label
   const langEl = block.querySelector<HTMLElement>('[class*="code-block"] [role="button"], [class*="language"]');
@@ -214,6 +258,153 @@ function enhanceEquation(block: Element, rdLabel: string): void {
   if (formula) {
     block.setAttribute('aria-label', `${rdLabel}: ${formula.substring(0, 80)}`);
   }
+}
+
+function enhanceVideoBlock(block: Element, rdLabel: string): void {
+  // Try iframe title
+  const iframe = block.querySelector<HTMLIFrameElement>('iframe');
+  if (iframe) {
+    const title = iframe.getAttribute('title') ?? '';
+    const src = iframe.src ?? '';
+
+    // Extract service name from src
+    let service = '';
+    try {
+      const url = new URL(src);
+      if (url.hostname.includes('youtube')) service = 'YouTube';
+      else if (url.hostname.includes('vimeo')) service = 'Vimeo';
+      else if (url.hostname.includes('loom')) service = 'Loom';
+      else if (url.hostname.includes('wistia')) service = 'Wistia';
+      else service = url.hostname;
+    } catch { /* ignore */ }
+
+    if (title) {
+      block.setAttribute('aria-label', `${rdLabel}: ${title}`);
+    } else if (service) {
+      block.setAttribute('aria-label', `${rdLabel} (${service})`);
+    }
+
+    // Ensure iframe has a title for accessibility
+    if (!iframe.getAttribute('title') && service) {
+      iframe.setAttribute('title', `${service}動画`);
+    }
+    return;
+  }
+
+  // Native video element
+  const video = block.querySelector<HTMLVideoElement>('video');
+  if (video) {
+    const src = video.src || video.querySelector('source')?.src || '';
+    block.setAttribute('aria-label', `${rdLabel}: 動画${src ? '' : ' (ソース未設定)'}`);
+  }
+}
+
+function enhanceEmbedBlock(block: Element, rdLabel: string): void {
+  const iframe = block.querySelector<HTMLIFrameElement>('iframe');
+  if (!iframe) return;
+
+  const title = iframe.getAttribute('title') ?? '';
+  const src = iframe.src ?? '';
+
+  let service = '';
+  try {
+    const url = new URL(src);
+    if (url.hostname.includes('figma')) service = 'Figma';
+    else if (url.hostname.includes('miro')) service = 'Miro';
+    else if (url.hostname.includes('google')) service = 'Google';
+    else if (url.hostname.includes('twitter') || url.hostname.includes('x.com')) service = 'X';
+    else if (url.hostname.includes('codepen')) service = 'CodePen';
+    else if (url.hostname.includes('github')) service = 'GitHub';
+    else if (url.hostname.includes('notion')) service = 'Notion';
+    else service = url.hostname;
+  } catch { /* ignore */ }
+
+  if (title) {
+    block.setAttribute('aria-label', `${rdLabel}: ${title}`);
+  } else if (service) {
+    block.setAttribute('aria-label', `${rdLabel} (${service})`);
+  }
+
+  // Ensure iframe has a title
+  if (!iframe.getAttribute('title')) {
+    iframe.setAttribute('title', service ? `${service}の埋め込み` : '埋め込みコンテンツ');
+  }
+}
+
+/**
+ * Enhance a simple table block (non-database table).
+ * notion-table-block contains notion-table_row-block children.
+ */
+function enhanceSimpleTable(block: Element): void {
+  const rows = block.querySelectorAll('.notion-table_row-block');
+  if (rows.length === 0) return;
+
+  // Set table role on the block
+  block.setAttribute('role', 'table');
+
+  // Count columns from first row's cells
+  const firstRow = rows[0];
+  const firstRowCells = getSimpleTableCells(firstRow);
+  const colCount = firstRowCells.length;
+
+  block.setAttribute('aria-rowcount', String(rows.length));
+  block.setAttribute('aria-colcount', String(colCount));
+
+  const text = getBlockText(block, 30);
+  block.setAttribute('aria-label', `シンプルテーブル ${rows.length}行 ${colCount}列${text ? ': ' + text : ''}`);
+
+  // Check if first row is a header (Notion may style it differently)
+  const firstRowEl = rows[0] as HTMLElement;
+  const isHeader = firstRowEl.querySelector('[style*="font-weight: 600"], [style*="font-weight:600"], [style*="font-weight: bold"]') !== null;
+
+  rows.forEach((row, rowIdx) => {
+    row.setAttribute('role', 'row');
+    row.setAttribute('aria-rowindex', String(rowIdx + 1));
+
+    const cells = getSimpleTableCells(row);
+    cells.forEach((cell, colIdx) => {
+      const isHeaderCell = rowIdx === 0 && isHeader;
+      cell.setAttribute('role', isHeaderCell ? 'columnheader' : 'cell');
+      cell.setAttribute('aria-colindex', String(colIdx + 1));
+
+      const cellText = cell.textContent?.trim() ?? '';
+      if (cellText) {
+        cell.setAttribute('aria-label', cellText);
+      }
+    });
+  });
+}
+
+function getSimpleTableCells(row: Element): HTMLElement[] {
+  // Simple table cells are direct child divs of the row's inner container
+  const inner = row.querySelector('.notion-table-view-row, :scope > div > div');
+  if (inner) {
+    return Array.from(inner.children as HTMLCollectionOf<HTMLElement>).filter(
+      (c) => c.offsetWidth > 0,
+    );
+  }
+  // Fallback: contenteditable cells within the row
+  const editables = row.querySelectorAll<HTMLElement>('[contenteditable], [role="textbox"]');
+  if (editables.length > 0) return Array.from(editables);
+  // Last resort: direct children
+  return Array.from(row.children as HTMLCollectionOf<HTMLElement>);
+}
+
+function enhanceSyncedBlock(block: Element, rdLabel: string): void {
+  // Synced blocks have a colored border and a "synced" indicator
+  const sourceLink = block.querySelector<HTMLAnchorElement>('a[href]');
+  if (sourceLink) {
+    const linkText = sourceLink.textContent?.trim();
+    block.setAttribute('aria-label', `${rdLabel}: ${linkText ?? 'リンク元あり'}`);
+  } else {
+    const text = getBlockText(block, 40);
+    block.setAttribute('aria-label', text ? `${rdLabel}: ${text}` : `${rdLabel}`);
+  }
+}
+
+function enhanceTableOfContents(block: Element, rdLabel: string): void {
+  const links = block.querySelectorAll('a');
+  block.setAttribute('aria-label', `${rdLabel} (${links.length}件)`);
 }
 
 function enhanceToggle(block: Element): void {
