@@ -91,7 +91,7 @@ chrome.webNavigation?.onCommitted?.addListener(
 // ─── Guide Page ──────────────────────────────────────────────
 // Open the guide page when the extension icon is clicked.
 
-chrome.action.onClicked.addListener(() => {
+chrome.action?.onClicked?.addListener(() => {
   chrome.tabs.create({ url: chrome.runtime.getURL('guide/guide.html') });
 });
 
