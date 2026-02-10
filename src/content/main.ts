@@ -579,21 +579,32 @@ function enhanceHomePage(): void {
   for (const link of pageLinks) {
     if (link.getAttribute('aria-label')) continue;
 
-    // Extract page title from the card (separate title from date info)
+    // Extract page title from the card
+    // Notion card structure: children[0]=cover/icon, children[1]=info container
+    // Info container has grandchildren: [0]=title div, [1]=date div
     const titleEl = link.querySelector<HTMLElement>('[class*="title"], [class*="name"]');
-    const title = titleEl?.textContent?.trim();
+    let title = titleEl?.textContent?.trim();
+
+    if (!title) {
+      // Try DOM structure: second child's first grandchild is the title
+      const infoContainer = link.children[1] as HTMLElement | undefined;
+      if (infoContainer?.children.length >= 2) {
+        title = (infoContainer.children[0] as HTMLElement).textContent?.trim();
+      }
+    }
+
+    if (!title) {
+      // Final fallback: strip date suffix from full text
+      const fullText = link.textContent?.trim() ?? '';
+      const datePattern = /\d+(?:時間|日|分|秒|か月)前$|\d{4}年\d+月\d+日$|\d+月\d+日$|\d{4}\/\d+\/\d+$/;
+      const cleaned = fullText.replace(datePattern, '').trim();
+      if (cleaned && cleaned.length < 60 && cleaned !== fullText) {
+        title = cleaned;
+      }
+    }
 
     if (title) {
       link.setAttribute('aria-label', title);
-    } else {
-      // Fallback: try to separate title from date
-      const fullText = link.textContent?.trim() ?? '';
-      // Date patterns: "2日前", "1時間前", "3分前", "2025年9月18日", "2025/10/31"
-      const datePattern = /\d+[日時分秒]前$|\d{4}年\d+月\d+日$|\d{4}\/\d+\/\d+$/;
-      const cleaned = fullText.replace(datePattern, '').trim();
-      if (cleaned && cleaned.length < 60 && cleaned !== fullText) {
-        link.setAttribute('aria-label', cleaned);
-      }
     }
   }
 

@@ -600,6 +600,20 @@ export function enhanceInlineLinks(): void {
 }
 
 /**
+ * Hide decorative page icons inside links from screen readers.
+ * These .notion-record-icon buttons inside <a> tags are redundant
+ * since the link text already provides the page name.
+ */
+function hideDecorativeIcons(): void {
+  const icons = document.querySelectorAll<HTMLElement>('a .notion-record-icon[role="button"]');
+  for (const icon of icons) {
+    if (icon.getAttribute('aria-hidden')) continue;
+    icon.setAttribute('aria-hidden', 'true');
+    icon.removeAttribute('role');
+  }
+}
+
+/**
  * Run a full scan of the page and enhance all discoverable elements.
  */
 export function scanAndEnhance(): number {
@@ -635,6 +649,9 @@ export function scanAndEnhance(): number {
 
   // Icon-only buttons
   enhanceIconButtons();
+
+  // Hide decorative page icons inside links
+  hideDecorativeIcons();
 
   logDebug(MODULE, `Scan complete: ${count} elements enhanced`);
   return count;
