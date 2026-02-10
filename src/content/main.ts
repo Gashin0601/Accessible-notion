@@ -29,6 +29,9 @@ let settings: ExtensionSettings = { ...DEFAULT_SETTINGS };
 let mainObserver: MutationObserver | null = null;
 let lastUrl = location.href;
 
+/** Flag set when Enter is pressed on a sidebar treeitem, cleared after page change */
+let sidebarNavigationPending = false;
+
 /**
  * Request the service worker to inject the DOM bridge into the page's MAIN world.
  * Uses chrome.scripting.executeScript which bypasses CSP restrictions.
@@ -115,6 +118,9 @@ async function init(): Promise<void> {
 
     // 16. SPA navigation detection
     startNavigationDetection();
+
+    // 17. Sidebar Enter key detection for auto-focus after page navigation
+    startSidebarEnterDetection();
 
     logInfo(MODULE, 'Initialization complete');
     announce('Accessible Notion が有効です');
@@ -234,10 +240,26 @@ function startNavigationDetection(): void {
   }, 1000);
 }
 
+/**
+ * Detect Enter key on sidebar treeitems to set auto-focus flag.
+ * Only when the user explicitly presses Enter to open a page
+ * should focus move to the main content after navigation.
+ */
+function startSidebarEnterDetection(): void {
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const target = e.target as HTMLElement | null;
+    if (!target?.closest(SIDEBAR_NAV)) return;
+    if (!target.closest(TREE_ITEM) && !target.matches(TREE_ITEM)) return;
+    sidebarNavigationPending = true;
+    logDebug(MODULE, 'Sidebar Enter detected — will auto-focus main content after navigation');
+  }, true);
+}
+
 function handlePageChange(): void {
-  // Check if focus is currently in the sidebar (keyboard navigation case)
-  const activeEl = document.activeElement as HTMLElement | null;
-  const focusWasInSidebar = !!activeEl?.closest(SIDEBAR_NAV);
+  // Capture and clear the sidebar navigation flag
+  const shouldFocusMain = sidebarNavigationPending;
+  sidebarNavigationPending = false;
 
   // Announce loading state for screen readers
   announce('ページを読み込み中…');
@@ -269,11 +291,9 @@ function handlePageChange(): void {
       announce(`${title} を開きました`);
     }
 
-    // Auto-focus main content when navigating from the sidebar
-    // This solves the keyboard navigation gap: after selecting a page
-    // in the sidebar with Enter, focus moves to the content area
-    if (focusWasInSidebar) {
-      // Additional delay to ensure page content is fully rendered
+    // Auto-focus main content only when user explicitly pressed Enter
+    // on a sidebar treeitem to navigate to a page
+    if (shouldFocusMain) {
       setTimeout(() => focusMainContent(), 300);
     }
   }, 800);
