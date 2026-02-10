@@ -108,6 +108,7 @@ export function enhanceTreeItems(): void {
     item.setAttribute('aria-label', name);
 
     item.setAttribute(EXTENSION_ATTR, 'tree');
+    item.dispatchEvent(new CustomEvent('accessible-notion-protect', { bubbles: false }));
   }
 
   logDebug(MODULE, `Enhanced ${treeItems.length} tree items`);

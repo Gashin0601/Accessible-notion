@@ -29,6 +29,21 @@ let mainObserver: MutationObserver | null = null;
 let lastUrl = location.href;
 
 /**
+ * Request the service worker to inject the DOM bridge into the page's MAIN world.
+ * Uses chrome.scripting.executeScript which bypasses CSP restrictions.
+ */
+async function requestBridgeInjection(): Promise<void> {
+  try {
+    await chrome.runtime.sendMessage({ type: 'inject-dom-bridge' });
+    logDebug(MODULE, 'DOM bridge injection requested');
+    // Small delay to ensure bridge is active before we start enhancing
+    await new Promise((r) => setTimeout(r, 50));
+  } catch (err) {
+    logError(MODULE, 'Failed to request bridge injection:', err);
+  }
+}
+
+/**
  * Initialize all modules.
  */
 async function init(): Promise<void> {
@@ -281,6 +296,9 @@ function selectorHealthCheck(): void {
 
 // ─── Bootstrap ──────────────────────────────────────────────
 (async () => {
+  // Request DOM bridge injection into MAIN world (prevents DOMLock attribute reverts)
+  await requestBridgeInjection();
+
   // Wait for Notion app to be ready
   const waitForApp = (retries = 10): Promise<void> => {
     return new Promise((resolve) => {

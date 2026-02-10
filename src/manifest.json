@@ -6,7 +6,9 @@
   "default_locale": "ja",
   "permissions": [
     "storage",
-    "management"
+    "management",
+    "scripting",
+    "webNavigation"
   ],
   "icons": {
     "128": "icons/icon128.png"
@@ -20,6 +22,10 @@
       "js": ["content/main.js"],
       "run_at": "document_idle"
     }
+  ],
+  "host_permissions": [
+    "https://www.notion.so/*",
+    "https://*.notion.site/*"
   ],
   "background": {
     "service_worker": "background/service-worker.js"

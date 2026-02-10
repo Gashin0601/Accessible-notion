@@ -45,6 +45,7 @@ function copyLocalesDir(src, dest) {
 const buildOptions = {
   entryPoints: [
     'src/content/main.ts',
+    'src/content/dom-bridge.ts',
     'src/background/service-worker.ts',
   ],
   bundle: true,

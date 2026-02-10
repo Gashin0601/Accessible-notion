@@ -28,6 +28,11 @@ function mark(el: Element): void {
   el.setAttribute(EXTENSION_ATTR, 'true');
 }
 
+/** Request DOMLock protection for an element's ARIA attributes */
+function protect(el: Element): void {
+  el.dispatchEvent(new CustomEvent('accessible-notion-protect', { bubbles: false }));
+}
+
 function isMarked(el: Element): boolean {
   return el.hasAttribute(EXTENSION_ATTR);
 }
@@ -98,6 +103,7 @@ export function enhanceBlock(block: Element): void {
   }
 
   mark(block);
+  protect(block);
 }
 
 function enhanceToggle(block: Element): void {
@@ -141,6 +147,7 @@ export function enhanceTextbox(textbox: Element): void {
   }
 
   mark(textbox);
+  protect(textbox);
 }
 
 /**
@@ -150,6 +157,7 @@ export function enhanceImage(img: HTMLImageElement): void {
   if (isMarked(img)) return;
   if (img.alt && img.alt.trim()) {
     mark(img);
+    protect(img);
     return;
   }
 
@@ -160,12 +168,14 @@ export function enhanceImage(img: HTMLImageElement): void {
     if (caption?.textContent?.trim()) {
       img.alt = caption.textContent.trim();
       mark(img);
+      protect(img);
       return;
     }
   }
 
   img.alt = '画像';
   mark(img);
+  protect(img);
 }
 
 /**
