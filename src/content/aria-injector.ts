@@ -52,13 +52,17 @@ export function enhanceBlock(block: Element): void {
     block.setAttribute('role', info.role);
   }
 
-  // Set aria-roledescription
-  if (!block.getAttribute('aria-roledescription')) {
+  // Heading-specific: aria-level
+  if (info.ariaLevel) {
+    block.setAttribute('aria-level', String(info.ariaLevel));
+  }
+
+  // Set aria-roledescription for non-standard roles
+  if (!block.getAttribute('aria-roledescription') && info.role !== 'heading') {
     block.setAttribute('aria-roledescription', info.description);
   }
 
   // Build aria-label from content
-  // Use existing roledescription if Notion already provides one (may be localized)
   const rdLabel = block.getAttribute('aria-roledescription') ?? info.description;
   const text = getBlockText(block);
   if (text) {

@@ -10,6 +10,11 @@ import { logDebug } from '../shared/logger';
 import { DB_COLLECTION_VIEW, DB_TABLE_VIEW } from './selectors';
 import { announce } from './live-announcer';
 
+/** Request DOMLock protection for an element's ARIA attributes */
+function protect(el: Element): void {
+  el.dispatchEvent(new CustomEvent('accessible-notion-protect', { bubbles: false }));
+}
+
 const MODULE = 'TableEnhancer';
 
 let gridModeActive = false;
@@ -121,6 +126,18 @@ export function enhanceTableView(container: HTMLElement): void {
   });
 
   container.setAttribute(EXTENSION_ATTR, 'table');
+  protect(container);
+
+  // Protect header cells and data cells from DOMLock reverts
+  if (info.headerRow) {
+    protect(info.headerRow);
+    info.headerCells.forEach((c) => protect(c));
+  }
+  info.dataRows.forEach((row) => {
+    protect(row);
+    info.getRowCells(row).forEach((c) => protect(c));
+  });
+
   logDebug(MODULE, `Enhanced table: ${info.dataRows.length} rows, ${info.headerCells.length} cols`);
 }
 

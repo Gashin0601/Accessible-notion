@@ -32,7 +32,7 @@ describe('aria-injector', () => {
       expect(block.getAttribute('tabindex')).toBe('-1');
     });
 
-    it('adds role for header block with correct description', () => {
+    it('adds heading role with aria-level for header block', () => {
       const block = document.createElement('div');
       block.classList.add('notion-selectable', 'notion-header-block');
       block.setAttribute('data-block-id', 'test-2');
@@ -41,7 +41,8 @@ describe('aria-injector', () => {
 
       enhanceBlock(block);
 
-      expect(block.getAttribute('aria-roledescription')).toBe('見出し1ブロック');
+      expect(block.getAttribute('role')).toBe('heading');
+      expect(block.getAttribute('aria-level')).toBe('1');
     });
 
     it('adds separator role for divider block', () => {

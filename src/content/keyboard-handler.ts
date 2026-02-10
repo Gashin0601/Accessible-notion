@@ -7,8 +7,12 @@
 
 import { logDebug } from '../shared/logger';
 import { focusSidebar, focusMainContent, focusHeader } from './focus-manager';
-import { nextBlock, prevBlock, announceCurrentBlock, announceHeadingOutline } from './block-navigator';
+import {
+  nextBlock, prevBlock, announceCurrentBlock, announceHeadingOutline,
+  nextHeading, prevHeading, nextHeadingLevel, firstBlock, lastBlock,
+} from './block-navigator';
 import { announce } from './live-announcer';
+import { enterGridMode } from './table-enhancer';
 import type { ExtensionSettings } from '../shared/constants';
 
 const MODULE = 'KeyboardHandler';
@@ -34,7 +38,14 @@ function buildBindings(shortcuts: Record<string, string>): void {
     headingOutline: { action: announceHeadingOutline, description: '見出し構造を読み上げ' },
     nextBlock: { action: nextBlock, description: '次のブロックへ移動' },
     prevBlock: { action: prevBlock, description: '前のブロックへ移動' },
-    dbGridMode: { action: () => announce('データベースグリッドモード: 未実装'), description: 'DBグリッドモード' },
+    nextHeading: { action: nextHeading, description: '次の見出しへジャンプ' },
+    prevHeading: { action: prevHeading, description: '前の見出しへジャンプ' },
+    nextH1: { action: () => nextHeadingLevel(1), description: '次の見出し1へジャンプ' },
+    nextH2: { action: () => nextHeadingLevel(2), description: '次の見出し2へジャンプ' },
+    nextH3: { action: () => nextHeadingLevel(3), description: '次の見出し3へジャンプ' },
+    firstBlock: { action: firstBlock, description: '最初のブロックへ移動' },
+    lastBlock: { action: lastBlock, description: '最後のブロックへ移動' },
+    dbGridMode: { action: enterGridMode, description: 'DBグリッドモード' },
     landmarkList: { action: announceLandmarks, description: 'ランドマーク一覧' },
     help: { action: announceHelp, description: 'ヘルプ表示' },
   };

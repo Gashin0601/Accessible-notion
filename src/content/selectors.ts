@@ -25,16 +25,16 @@ export const BLOCK_SELECTABLE = 'div.notion-selectable[data-block-id]';
 /** Map of Notion block CSS class suffix → human-readable type */
 export const BLOCK_TYPE_MAP: Record<string, BlockTypeInfo> = {
   'text-block':          { role: 'group', description: 'テキストブロック', descriptionEn: 'Text block' },
-  'header-block':        { role: 'group', description: '見出し1ブロック', descriptionEn: 'Heading 1 block' },
-  'sub_header-block':    { role: 'group', description: '見出し2ブロック', descriptionEn: 'Heading 2 block' },
-  'sub_sub_header-block':{ role: 'group', description: '見出し3ブロック', descriptionEn: 'Heading 3 block' },
-  'bulleted_list-block': { role: 'group', description: '箇条書きブロック', descriptionEn: 'Bulleted list block' },
-  'numbered_list-block': { role: 'group', description: '番号付きリストブロック', descriptionEn: 'Numbered list block' },
-  'to_do-block':         { role: 'group', description: 'チェックボックスブロック', descriptionEn: 'To-do block' },
-  'toggle-block':        { role: 'group', description: 'トグルブロック', descriptionEn: 'Toggle block' },
+  'header-block':        { role: 'heading', description: '見出し1', descriptionEn: 'Heading 1', ariaLevel: 1 },
+  'sub_header-block':    { role: 'heading', description: '見出し2', descriptionEn: 'Heading 2', ariaLevel: 2 },
+  'sub_sub_header-block':{ role: 'heading', description: '見出し3', descriptionEn: 'Heading 3', ariaLevel: 3 },
+  'bulleted_list-block': { role: 'listitem', description: '箇条書き', descriptionEn: 'Bulleted list item' },
+  'numbered_list-block': { role: 'listitem', description: '番号付きリスト', descriptionEn: 'Numbered list item' },
+  'to_do-block':         { role: 'checkbox', description: 'チェックボックス', descriptionEn: 'To-do checkbox' },
+  'toggle-block':        { role: 'button', description: 'トグル', descriptionEn: 'Toggle' },
   'callout-block':       { role: 'note', description: 'コールアウトブロック', descriptionEn: 'Callout block' },
-  'quote-block':         { role: 'group', description: '引用ブロック', descriptionEn: 'Quote block' },
-  'code-block':          { role: 'group', description: 'コードブロック', descriptionEn: 'Code block' },
+  'quote-block':         { role: 'blockquote', description: '引用', descriptionEn: 'Quote' },
+  'code-block':          { role: 'code', description: 'コード', descriptionEn: 'Code block' },
   'image-block':         { role: 'figure', description: '画像ブロック', descriptionEn: 'Image block' },
   'video-block':         { role: 'figure', description: '動画ブロック', descriptionEn: 'Video block' },
   'embed-block':         { role: 'figure', description: '埋め込みブロック', descriptionEn: 'Embed block' },
@@ -61,6 +61,7 @@ export interface BlockTypeInfo {
   role: string;
   description: string;
   descriptionEn: string;
+  ariaLevel?: number;
 }
 
 // ─── Editable content ────────────────────────────────────────

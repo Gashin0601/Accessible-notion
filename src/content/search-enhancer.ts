@@ -5,8 +5,10 @@
  * - Dialog labeling
  * - Listbox role for results
  * - Option role for each result item
- * - aria-selected tracking
+ * - Arrow key navigation through results
+ * - aria-selected / aria-activedescendant tracking
  * - Result count announcement
+ * - Notion highlight tracking (sync our state with Notion's own selection)
  */
 
 import { EXTENSION_ATTR } from '../shared/constants';
@@ -17,6 +19,86 @@ const MODULE = 'SearchEnhancer';
 
 let observer: MutationObserver | null = null;
 let lastResultCount = -1;
+let activeIndex = -1;
+let keydownHandler: ((e: KeyboardEvent) => void) | null = null;
+
+/** Selectors for finding result items — tries multiple Notion patterns */
+const RESULT_ITEM_SELECTORS = [
+  '[class*="search-result"]',
+  '[class*="result-item"]',
+  '[class*="quick-find-menu"] > div > div',
+].join(', ');
+
+const RESULT_LIST_SELECTORS = [
+  '[class*="search-results"]',
+  '[class*="results"]',
+  '[class*="quick-find"]',
+].join(', ');
+
+/**
+ * Get current result items from the active search dialog.
+ */
+function getResultItems(dialog: HTMLElement): HTMLElement[] {
+  const items = dialog.querySelectorAll<HTMLElement>(RESULT_ITEM_SELECTORS);
+  return Array.from(items).filter((el) => {
+    // Filter out container elements that aren't actual results
+    return el.offsetHeight > 0 && el.offsetParent !== null;
+  });
+}
+
+/**
+ * Update aria-selected on all result items and announce the active one.
+ */
+function setActiveResult(dialog: HTMLElement, items: HTMLElement[], index: number): void {
+  // Clear previous selection
+  for (const item of items) {
+    item.setAttribute('aria-selected', 'false');
+  }
+
+  if (index < 0 || index >= items.length) {
+    activeIndex = -1;
+    return;
+  }
+
+  activeIndex = index;
+  const active = items[index];
+  active.setAttribute('aria-selected', 'true');
+
+  // Set aria-activedescendant on the input
+  const input = dialog.querySelector<HTMLElement>('input[type="text"], input:not([type])');
+  if (input && active.id) {
+    input.setAttribute('aria-activedescendant', active.id);
+  }
+
+  // Scroll into view if needed
+  active.scrollIntoView({ block: 'nearest' });
+
+  // Announce the item
+  const label = active.getAttribute('aria-label') ?? active.textContent?.trim() ?? '';
+  if (label) {
+    announce(`${label} (${index + 1}/${items.length})`);
+  }
+}
+
+/**
+ * Detect which item Notion has highlighted and sync our aria-selected.
+ */
+function syncNotionHighlight(dialog: HTMLElement): void {
+  const items = getResultItems(dialog);
+  if (items.length === 0) return;
+
+  // Notion highlights the active result with a background color style or class
+  for (let i = 0; i < items.length; i++) {
+    const bg = getComputedStyle(items[i]).backgroundColor;
+    // Notion uses a non-white/non-transparent highlight background
+    if (bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent' && bg !== 'rgb(255, 255, 255)') {
+      if (activeIndex !== i) {
+        setActiveResult(dialog, items, i);
+      }
+      return;
+    }
+  }
+}
 
 /**
  * Enhance a search dialog when detected.
@@ -32,15 +114,16 @@ function enhanceSearchDialog(dialog: HTMLElement): void {
   // Find the results container and enhance it
   enhanceResults(dialog);
 
+  // Attach keyboard handler
+  attachKeyboardNavigation(dialog);
+
   dialog.setAttribute(EXTENSION_ATTR, 'search');
   logDebug(MODULE, 'Search dialog enhanced');
 }
 
 function enhanceResults(dialog: HTMLElement): void {
   // Notion search results appear in a scrollable list
-  const resultsList = dialog.querySelector(
-    '[class*="search-results"], [class*="results"], [class*="quick-find"]',
-  );
+  const resultsList = dialog.querySelector(RESULT_LIST_SELECTORS);
 
   if (resultsList && !resultsList.getAttribute('role')) {
     resultsList.setAttribute('role', 'listbox');
@@ -48,16 +131,20 @@ function enhanceResults(dialog: HTMLElement): void {
   }
 
   // Each result item
-  const items = dialog.querySelectorAll(
-    '[class*="search-result"], [class*="result-item"], [class*="quick-find-menu"] > div > div',
-  );
+  const items = getResultItems(dialog);
 
   let count = 0;
   items.forEach((item, idx) => {
     if (!item.getAttribute('role')) {
       item.setAttribute('role', 'option');
     }
-    item.setAttribute('aria-selected', 'false');
+    // Ensure each has an ID for aria-activedescendant
+    if (!item.id) {
+      item.id = `an-search-result-${idx}`;
+    }
+    if (!item.getAttribute('aria-selected')) {
+      item.setAttribute('aria-selected', 'false');
+    }
     item.setAttribute('tabindex', '-1');
     count++;
 
@@ -69,6 +156,9 @@ function enhanceResults(dialog: HTMLElement): void {
     }
   });
 
+  // Sync with Notion's own highlight
+  syncNotionHighlight(dialog);
+
   // Announce result count if changed
   if (count !== lastResultCount && count > 0) {
     lastResultCount = count;
@@ -77,6 +167,62 @@ function enhanceResults(dialog: HTMLElement): void {
     lastResultCount = 0;
     announce('結果が見つかりません');
   }
+}
+
+/**
+ * Attach keyboard navigation to the search dialog.
+ * Notion already handles Up/Down for visual highlighting, so we add aria-selected
+ * tracking and announcements. We listen on capture phase to read Notion's state
+ * after it processes the keys.
+ */
+function attachKeyboardNavigation(dialog: HTMLElement): void {
+  if (keydownHandler) return;
+
+  keydownHandler = (e: KeyboardEvent) => {
+    // Only handle if the search dialog is still in the DOM
+    if (!document.contains(dialog)) {
+      detachKeyboardNavigation();
+      return;
+    }
+
+    const items = getResultItems(dialog);
+    if (items.length === 0) return;
+
+    switch (e.key) {
+      case 'ArrowDown': {
+        // Let Notion handle the actual navigation, then sync after a tick
+        setTimeout(() => syncNotionHighlight(dialog), 50);
+        break;
+      }
+      case 'ArrowUp': {
+        setTimeout(() => syncNotionHighlight(dialog), 50);
+        break;
+      }
+      case 'Enter': {
+        // Notion handles the actual navigation to the page
+        // We just announce what was selected
+        if (activeIndex >= 0 && activeIndex < items.length) {
+          const label = items[activeIndex].getAttribute('aria-label') ?? '';
+          if (label) {
+            announce(`${label} を開きます`);
+          }
+        }
+        break;
+      }
+    }
+  };
+
+  // Use capture phase to fire after Notion processes
+  document.addEventListener('keydown', keydownHandler, false);
+  logDebug(MODULE, 'Keyboard navigation attached');
+}
+
+function detachKeyboardNavigation(): void {
+  if (keydownHandler) {
+    document.removeEventListener('keydown', keydownHandler, false);
+    keydownHandler = null;
+  }
+  activeIndex = -1;
 }
 
 /**
@@ -101,11 +247,21 @@ export function initSearchEnhancer(): void {
           }
         }
       }
+
+      // Detect dialog removal → clean up
+      for (const node of mutation.removedNodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (node.matches(`[role="dialog"][${EXTENSION_ATTR}="search"]`)) {
+          detachKeyboardNavigation();
+          lastResultCount = -1;
+          logDebug(MODULE, 'Search dialog closed');
+        }
+      }
     }
 
     // Also re-enhance results in existing dialogs (they update dynamically)
-    const existingDialog = document.querySelector(`[role="dialog"][${EXTENSION_ATTR}="search"]`);
-    if (existingDialog instanceof HTMLElement) {
+    const existingDialog = document.querySelector<HTMLElement>(`[role="dialog"][${EXTENSION_ATTR}="search"]`);
+    if (existingDialog) {
       enhanceResults(existingDialog);
     }
   });
@@ -117,5 +273,6 @@ export function initSearchEnhancer(): void {
 export function destroySearchEnhancer(): void {
   observer?.disconnect();
   observer = null;
+  detachKeyboardNavigation();
   lastResultCount = -1;
 }

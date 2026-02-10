@@ -172,6 +172,84 @@ export function announceHeadingOutline(): void {
 }
 
 /**
+ * Navigate to the next heading block (any level).
+ */
+export function nextHeading(): void {
+  const blocks = getAllBlocks();
+  if (blocks.length === 0) return;
+
+  const start = currentBlockIndex < 0 ? 0 : currentBlockIndex + 1;
+
+  for (let i = start; i < blocks.length; i++) {
+    const type = detectBlockType(blocks[i]);
+    if (type === 'header-block' || type === 'sub_header-block' || type === 'sub_sub_header-block') {
+      navigateToBlock(i);
+      return;
+    }
+  }
+  announce('次の見出しがありません');
+}
+
+/**
+ * Navigate to the previous heading block (any level).
+ */
+export function prevHeading(): void {
+  const blocks = getAllBlocks();
+  if (blocks.length === 0) return;
+
+  const start = currentBlockIndex <= 0 ? blocks.length - 1 : currentBlockIndex - 1;
+
+  for (let i = start; i >= 0; i--) {
+    const type = detectBlockType(blocks[i]);
+    if (type === 'header-block' || type === 'sub_header-block' || type === 'sub_sub_header-block') {
+      navigateToBlock(i);
+      return;
+    }
+  }
+  announce('前の見出しがありません');
+}
+
+/**
+ * Navigate to the next heading of a specific level (1, 2, or 3).
+ */
+export function nextHeadingLevel(level: number): void {
+  const blocks = getAllBlocks();
+  if (blocks.length === 0) return;
+
+  const targetType = level === 1 ? 'header-block'
+    : level === 2 ? 'sub_header-block'
+    : 'sub_sub_header-block';
+
+  const start = currentBlockIndex < 0 ? 0 : currentBlockIndex + 1;
+
+  for (let i = start; i < blocks.length; i++) {
+    if (detectBlockType(blocks[i]) === targetType) {
+      navigateToBlock(i);
+      return;
+    }
+  }
+  announce(`次の見出し${level}がありません`);
+}
+
+/**
+ * Navigate to the first block.
+ */
+export function firstBlock(): void {
+  const blocks = getAllBlocks();
+  if (blocks.length === 0) return;
+  navigateToBlock(0);
+}
+
+/**
+ * Navigate to the last block.
+ */
+export function lastBlock(): void {
+  const blocks = getAllBlocks();
+  if (blocks.length === 0) return;
+  navigateToBlock(blocks.length - 1);
+}
+
+/**
  * Reset navigation state (e.g. on page change).
  */
 export function resetBlockNavigation(): void {

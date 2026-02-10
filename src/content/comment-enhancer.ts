@@ -17,6 +17,8 @@ const MODULE = 'CommentEnhancer';
 
 let observer: MutationObserver | null = null;
 let lastCommentCount = 0;
+let commentKeyHandler: ((e: KeyboardEvent) => void) | null = null;
+let currentCommentIndex = -1;
 
 /**
  * Enhance comment threads in the side peek panel.
@@ -84,7 +86,78 @@ function enhanceComments(): void {
   }
   lastCommentCount = count;
 
+  // Make comments focusable for keyboard navigation
+  const allComments = peek.querySelectorAll<HTMLElement>(`[${EXTENSION_ATTR}="comment"]`);
+  allComments.forEach((c) => {
+    if (!c.hasAttribute('tabindex')) {
+      c.setAttribute('tabindex', '-1');
+    }
+  });
+
   logDebug(MODULE, `Enhanced ${count} comments`);
+}
+
+/**
+ * Get all enhanced comment elements.
+ */
+function getComments(): HTMLElement[] {
+  const peek = document.querySelector(SIDE_PEEK);
+  if (!peek) return [];
+  return Array.from(peek.querySelectorAll<HTMLElement>(`[${EXTENSION_ATTR}="comment"]`));
+}
+
+/**
+ * Navigate to a comment by index.
+ */
+function navigateToComment(index: number): void {
+  const comments = getComments();
+  if (comments.length === 0) return;
+  if (index < 0) index = 0;
+  if (index >= comments.length) index = comments.length - 1;
+
+  currentCommentIndex = index;
+  const comment = comments[index];
+  comment.focus();
+  const label = comment.getAttribute('aria-label') ?? 'コメント';
+  announce(`${label} (${index + 1}/${comments.length})`);
+}
+
+/**
+ * Set up keyboard navigation within the comment region.
+ * Alt+J = next comment, Alt+K = prev comment within the side peek.
+ */
+function attachCommentKeyboard(): void {
+  if (commentKeyHandler) return;
+
+  commentKeyHandler = (e: KeyboardEvent) => {
+    // Only activate when focus is inside the side peek
+    const peek = document.querySelector(SIDE_PEEK);
+    if (!peek || !peek.contains(document.activeElement)) return;
+
+    if (e.altKey && e.key === 'j') {
+      e.preventDefault();
+      const comments = getComments();
+      if (comments.length === 0) return;
+      const next = currentCommentIndex < comments.length - 1 ? currentCommentIndex + 1 : 0;
+      navigateToComment(next);
+    } else if (e.altKey && e.key === 'k') {
+      e.preventDefault();
+      const comments = getComments();
+      if (comments.length === 0) return;
+      const prev = currentCommentIndex > 0 ? currentCommentIndex - 1 : comments.length - 1;
+      navigateToComment(prev);
+    }
+  };
+
+  document.addEventListener('keydown', commentKeyHandler, true);
+}
+
+function detachCommentKeyboard(): void {
+  if (commentKeyHandler) {
+    document.removeEventListener('keydown', commentKeyHandler, true);
+    commentKeyHandler = null;
+  }
+  currentCommentIndex = -1;
 }
 
 /**
@@ -93,6 +166,9 @@ function enhanceComments(): void {
 export function initCommentEnhancer(): void {
   // Initial scan
   enhanceComments();
+
+  // Attach keyboard navigation
+  attachCommentKeyboard();
 
   // Watch for side peek changes
   observer = new MutationObserver(() => {
@@ -108,5 +184,6 @@ export function initCommentEnhancer(): void {
 export function destroyCommentEnhancer(): void {
   observer?.disconnect();
   observer = null;
+  detachCommentKeyboard();
   lastCommentCount = 0;
 }
