@@ -1,8 +1,14 @@
 /**
- * F-04: Database Table View Enhancement
+ * F-04: Database View Enhancement
  *
- * Injects grid/table ARIA semantics into Notion's database table views.
- * Provides arrow-key cell navigation in grid mode.
+ * Injects ARIA semantics into Notion's database views:
+ * - Table view: grid/row/gridcell with arrow-key navigation
+ * - Board view: labeled groups with card navigation
+ * - List view: list/listitem roles
+ * - Gallery view: grid with card roles
+ * - Calendar view: labeled grid
+ * - Timeline view: labeled region
+ * - View tabs: tablist/tab roles with aria-selected
  */
 
 import { EXTENSION_ATTR } from '../shared/constants';
@@ -228,13 +234,246 @@ function watchVirtualScroll(container: HTMLElement): void {
 }
 
 /**
+ * Enhance database view tabs (tablist/tab pattern).
+ * Notion renders view tabs as .notion-collection-view-tab-button elements.
+ */
+function enhanceViewTabs(container: HTMLElement): void {
+  // Only process top-level collection_view blocks (skip nested ones)
+  if (container.parentElement?.closest('.notion-collection_view-block')) return;
+
+  // Notion already provides role="tablist" and role="tab" — we just add labels
+  const existingTablist = container.querySelector<HTMLElement>('[role="tablist"]');
+  if (existingTablist && !existingTablist.getAttribute('aria-label')) {
+    existingTablist.setAttribute('aria-label', 'データベースビュー');
+  }
+
+  // Enhance individual tab buttons with labels
+  const tabButtons = container.querySelectorAll<HTMLElement>('.notion-collection-view-tab-button');
+  tabButtons.forEach((tabBtn) => {
+    const tabEl = tabBtn.querySelector<HTMLElement>('[role="tab"]') ?? tabBtn;
+    const text = tabBtn.textContent?.trim();
+    if (text && !tabEl.getAttribute('aria-label')) {
+      tabEl.setAttribute('aria-label', text);
+    }
+  });
+
+  if (tabButtons.length > 0) {
+    logDebug(MODULE, `Enhanced ${tabButtons.length} view tabs`);
+  }
+}
+
+/**
+ * Enhance a board (kanban) view.
+ */
+function enhanceBoardView(container: HTMLElement): void {
+  const boardView = container.querySelector('.notion-board-view') as HTMLElement | null;
+  if (!boardView) return;
+  if (boardView.getAttribute(EXTENSION_ATTR) === 'board') return;
+
+  boardView.setAttribute('role', 'region');
+  boardView.setAttribute('aria-roledescription', 'カンバンボード');
+
+  // Find board groups (columns)
+  const groups = boardView.querySelectorAll<HTMLElement>('.notion-board-group');
+  groups.forEach((group, idx) => {
+    group.setAttribute('role', 'group');
+
+    // Group header is typically the first child
+    const header = group.querySelector<HTMLElement>('.notion-board-group-header, [class*="board-group-header"]');
+    const headerText = header?.textContent?.trim() ?? `グループ${idx + 1}`;
+    group.setAttribute('aria-label', `${headerText}`);
+
+    // Cards within the group
+    const cards = group.querySelectorAll<HTMLElement>('.notion-collection-item');
+    cards.forEach((card) => {
+      card.setAttribute('role', 'article');
+      card.setAttribute('tabindex', '-1');
+      const cardText = card.textContent?.trim()?.substring(0, 50) ?? '';
+      if (cardText && !card.getAttribute('aria-label')) {
+        card.setAttribute('aria-label', cardText);
+      }
+    });
+  });
+
+  const cvBlock = boardView.closest('.notion-collection_view-block');
+  const dbLabel = cvBlock?.getAttribute('aria-label') ?? '';
+  const dbName = dbLabel.replace(/^データベース(ページ)?:\s*/, '').trim() || 'データベース';
+  boardView.setAttribute('aria-label', `${dbName} ボードビュー ${groups.length}グループ`);
+
+  boardView.setAttribute(EXTENSION_ATTR, 'board');
+  logDebug(MODULE, `Enhanced board view: ${groups.length} groups`);
+}
+
+/**
+ * Enhance a list view.
+ */
+function enhanceListView(container: HTMLElement): void {
+  const listView = container.querySelector('.notion-list-view') as HTMLElement | null;
+  if (!listView) return;
+  if (listView.getAttribute(EXTENSION_ATTR) === 'list') return;
+
+  listView.setAttribute('role', 'list');
+  listView.setAttribute('aria-roledescription', 'データベースリスト');
+
+  const items = listView.querySelectorAll<HTMLElement>('.notion-collection-item');
+  items.forEach((item, idx) => {
+    item.setAttribute('role', 'listitem');
+    item.setAttribute('tabindex', '-1');
+    const text = item.textContent?.trim()?.substring(0, 50) ?? '';
+    if (text && !item.getAttribute('aria-label')) {
+      item.setAttribute('aria-label', text);
+    }
+  });
+
+  const cvBlock = listView.closest('.notion-collection_view-block');
+  const dbLabel = cvBlock?.getAttribute('aria-label') ?? '';
+  const dbName = dbLabel.replace(/^データベース(ページ)?:\s*/, '').trim() || 'データベース';
+  listView.setAttribute('aria-label', `${dbName} リストビュー ${items.length}件`);
+
+  listView.setAttribute(EXTENSION_ATTR, 'list');
+  logDebug(MODULE, `Enhanced list view: ${items.length} items`);
+}
+
+/**
+ * Enhance a gallery view.
+ */
+function enhanceGalleryView(container: HTMLElement): void {
+  const galleryView = container.querySelector('.notion-gallery-view') as HTMLElement | null;
+  if (!galleryView) return;
+  if (galleryView.getAttribute(EXTENSION_ATTR) === 'gallery') return;
+
+  galleryView.setAttribute('role', 'grid');
+  galleryView.setAttribute('aria-roledescription', 'ギャラリー');
+
+  const cards = galleryView.querySelectorAll<HTMLElement>('.notion-collection-item');
+  cards.forEach((card) => {
+    card.setAttribute('role', 'gridcell');
+    card.setAttribute('tabindex', '-1');
+    const text = card.textContent?.trim()?.substring(0, 50) ?? '';
+    if (text && !card.getAttribute('aria-label')) {
+      card.setAttribute('aria-label', text);
+    }
+  });
+
+  const cvBlock = galleryView.closest('.notion-collection_view-block');
+  const dbLabel = cvBlock?.getAttribute('aria-label') ?? '';
+  const dbName = dbLabel.replace(/^データベース(ページ)?:\s*/, '').trim() || 'データベース';
+  galleryView.setAttribute('aria-label', `${dbName} ギャラリービュー ${cards.length}件`);
+
+  galleryView.setAttribute(EXTENSION_ATTR, 'gallery');
+  logDebug(MODULE, `Enhanced gallery view: ${cards.length} cards`);
+}
+
+/**
+ * Enhance a calendar view.
+ */
+function enhanceCalendarView(container: HTMLElement): void {
+  const calView = container.querySelector('.notion-calendar-view') as HTMLElement | null;
+  if (!calView) return;
+  if (calView.getAttribute(EXTENSION_ATTR) === 'calendar') return;
+
+  calView.setAttribute('role', 'grid');
+  calView.setAttribute('aria-roledescription', 'カレンダー');
+
+  const cvBlock = calView.closest('.notion-collection_view-block');
+  const dbLabel = cvBlock?.getAttribute('aria-label') ?? '';
+  const dbName = dbLabel.replace(/^データベース(ページ)?:\s*/, '').trim() || 'データベース';
+  calView.setAttribute('aria-label', `${dbName} カレンダービュー`);
+
+  // Calendar day cells
+  const dayCells = calView.querySelectorAll<HTMLElement>('.notion-calendar-view-day');
+  dayCells.forEach((cell) => {
+    cell.setAttribute('role', 'gridcell');
+    cell.setAttribute('tabindex', '-1');
+    // Try to extract date label
+    const dateLabel = cell.querySelector<HTMLElement>('[class*="day-number"], [class*="date"]');
+    const dateText = dateLabel?.textContent?.trim() ?? '';
+    const items = cell.querySelectorAll('.notion-collection-item');
+    if (dateText) {
+      cell.setAttribute('aria-label', `${dateText}日 ${items.length}件`);
+    }
+  });
+
+  calView.setAttribute(EXTENSION_ATTR, 'calendar');
+  logDebug(MODULE, 'Enhanced calendar view');
+}
+
+/**
+ * Enhance a timeline view.
+ */
+function enhanceTimelineView(container: HTMLElement): void {
+  const tlView = container.querySelector('.notion-timeline-view') as HTMLElement | null;
+  if (!tlView) return;
+  if (tlView.getAttribute(EXTENSION_ATTR) === 'timeline') return;
+
+  tlView.setAttribute('role', 'region');
+  tlView.setAttribute('aria-roledescription', 'タイムライン');
+
+  const cvBlock = tlView.closest('.notion-collection_view-block');
+  const dbLabel = cvBlock?.getAttribute('aria-label') ?? '';
+  const dbName = dbLabel.replace(/^データベース(ページ)?:\s*/, '').trim() || 'データベース';
+  tlView.setAttribute('aria-label', `${dbName} タイムラインビュー`);
+
+  const items = tlView.querySelectorAll<HTMLElement>('.notion-collection-item');
+  items.forEach((item) => {
+    item.setAttribute('role', 'article');
+    item.setAttribute('tabindex', '-1');
+  });
+
+  tlView.setAttribute(EXTENSION_ATTR, 'timeline');
+  logDebug(MODULE, `Enhanced timeline view: ${items.length} items`);
+}
+
+/**
+ * Detect which view type is active and enhance accordingly.
+ */
+function enhanceActiveView(container: HTMLElement): void {
+  // Table view (already handled by enhanceTableView)
+  if (container.querySelector('.notion-table-view')) {
+    enhanceTableView(container);
+    watchVirtualScroll(container);
+    return;
+  }
+
+  // Board view
+  if (container.querySelector('.notion-board-view')) {
+    enhanceBoardView(container);
+    return;
+  }
+
+  // List view
+  if (container.querySelector('.notion-list-view')) {
+    enhanceListView(container);
+    return;
+  }
+
+  // Gallery view
+  if (container.querySelector('.notion-gallery-view')) {
+    enhanceGalleryView(container);
+    return;
+  }
+
+  // Calendar view
+  if (container.querySelector('.notion-calendar-view')) {
+    enhanceCalendarView(container);
+    return;
+  }
+
+  // Timeline view
+  if (container.querySelector('.notion-timeline-view')) {
+    enhanceTimelineView(container);
+    return;
+  }
+}
+
+/**
  * Scan all collection views on the page and enhance them.
  */
 export function scanAndEnhanceTables(): void {
   const views = document.querySelectorAll<HTMLElement>(DB_COLLECTION_VIEW);
   for (const view of views) {
-    enhanceTableView(view);
-    watchVirtualScroll(view);
+    enhanceViewTabs(view);
+    enhanceActiveView(view);
   }
 }
 

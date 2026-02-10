@@ -98,7 +98,7 @@ export const NOTION_STATUS = '[role="status"][aria-live]';
 export const NOTION_ALERT = '[role="alert"][aria-live]';
 
 // ─── Misc ────────────────────────────────────────────────────
-export const TOPBAR_BREADCRUMB = '.notion-topbar-breadcrumb';
+export const TOPBAR_BREADCRUMB = '.shadow-cursor-breadcrumb, .notion-topbar-breadcrumb';
 export const HOVER_ONLY_CONTROLS = '.notion-selectable > [style*="opacity: 0"], .notion-block-handle';
 
 /**

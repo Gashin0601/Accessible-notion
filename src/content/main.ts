@@ -20,6 +20,7 @@ import { scanAndEnhanceTables, destroyTableEnhancer } from './table-enhancer';
 import { initSearchEnhancer, destroySearchEnhancer } from './search-enhancer';
 import { initCommentEnhancer, destroyCommentEnhancer } from './comment-enhancer';
 import { initModalEnhancer, destroyModalEnhancer } from './modal-enhancer';
+import { initPopupEnhancer, destroyPopupEnhancer } from './popup-enhancer';
 import { BLOCK_SELECTABLE, TEXTBOX, SIDEBAR_NAV, TREE_ITEM } from './selectors';
 
 const MODULE = 'Main';
@@ -90,13 +91,19 @@ async function init(): Promise<void> {
     // 8. Modal / dialog enhancement
     initModalEnhancer();
 
-    // 9. Start DOM observer for ongoing changes
+    // 9. Popup / menu enhancement (slash commands, mentions, etc.)
+    initPopupEnhancer();
+
+    // 10. Topbar landmark enhancement
+    enhanceTopbar();
+
+    // 11. Start DOM observer for ongoing changes
     startObserver();
 
-    // 10. Settings change listener
+    // 12. Settings change listener
     onSettingsChanged(handleSettingsChange);
 
-    // 11. SPA navigation detection
+    // 13. SPA navigation detection
     startNavigationDetection();
 
     logInfo(MODULE, 'Initialization complete');
@@ -219,6 +226,8 @@ function handlePageChange(): void {
       scanAndEnhanceTables();
     }
 
+    enhanceTopbar();
+
     // Extract page title for announcement
     const titleEl = document.querySelector('.notion-page-block h1, [class*="page-title"]');
     const title = titleEl?.textContent?.trim();
@@ -260,6 +269,7 @@ function teardown(): void {
   destroySearchEnhancer();
   destroyCommentEnhancer();
   destroyModalEnhancer();
+  destroyPopupEnhancer();
   destroyLiveAnnouncer();
 
   // Remove all injected attributes
@@ -269,6 +279,88 @@ function teardown(): void {
   }
 
   logInfo(MODULE, 'Extension disabled and cleaned up');
+}
+
+// ─── Topbar / breadcrumb enhancement ────────────────────────
+function enhanceTopbar(): void {
+  // Add banner role to topbar
+  const topbar = document.querySelector<HTMLElement>('.notion-topbar');
+  if (topbar && !topbar.getAttribute('role')) {
+    topbar.setAttribute('role', 'banner');
+    topbar.setAttribute('aria-label', 'ページヘッダー');
+    logDebug(MODULE, 'Topbar enhanced with role=banner');
+  }
+
+  // Add breadcrumb navigation semantics
+  const breadcrumb = document.querySelector<HTMLElement>('.shadow-cursor-breadcrumb, .notion-topbar-breadcrumb');
+  if (breadcrumb) {
+    if (!breadcrumb.getAttribute('role')) {
+      breadcrumb.setAttribute('role', 'navigation');
+      breadcrumb.setAttribute('aria-label', 'パンくずリスト');
+    }
+
+    // Mark breadcrumb links with proper semantics
+    const links = breadcrumb.querySelectorAll<HTMLElement>('a, [role="button"]');
+    links.forEach((link, idx) => {
+      const text = link.textContent?.trim();
+      if (text && !link.getAttribute('aria-label')) {
+        link.setAttribute('aria-label', text);
+      }
+      // Mark the last breadcrumb as current page
+      if (idx === links.length - 1) {
+        link.setAttribute('aria-current', 'page');
+      }
+    });
+
+    logDebug(MODULE, `Breadcrumb enhanced: ${links.length} items`);
+  }
+
+  // Enhance sidebar sections with labels
+  enhanceSidebarSections();
+}
+
+function enhanceSidebarSections(): void {
+  const sidebar = document.querySelector<HTMLElement>('nav.notion-sidebar-container');
+  if (!sidebar) return;
+
+  // Find section headers — they're buttons/divs with font-weight: 500/600
+  // Notion organizes sidebar into sections: お気に入り, チームスペース, シェア, プライベート
+  const sectionLabels = ['お気に入り', 'チームスペース', 'シェア', 'プライベート', 'Favorites', 'Teamspaces', 'Shared', 'Private'];
+
+  for (const label of sectionLabels) {
+    // Find the section header element
+    const walker = document.createTreeWalker(sidebar, NodeFilter.SHOW_ELEMENT, {
+      acceptNode(node) {
+        const el = node as HTMLElement;
+        const text = el.textContent?.trim();
+        // Match exact text (not descendants with long text)
+        if (text === label && el.children.length <= 2) {
+          return NodeFilter.FILTER_ACCEPT;
+        }
+        return NodeFilter.FILTER_SKIP;
+      },
+    });
+
+    const headerEl = walker.nextNode() as HTMLElement | null;
+    if (!headerEl) continue;
+
+    // Find the section container — typically the parent or grandparent
+    // that contains both the header and the tree items
+    let section = headerEl.parentElement;
+    // Walk up to find a container that includes tree items
+    for (let i = 0; i < 3; i++) {
+      if (!section) break;
+      if (section.querySelector('[role="treeitem"]')) break;
+      section = section.parentElement;
+    }
+
+    if (section && !section.getAttribute('aria-label')) {
+      section.setAttribute('role', 'group');
+      section.setAttribute('aria-label', label);
+    }
+  }
+
+  logDebug(MODULE, 'Sidebar sections enhanced');
 }
 
 // ─── Selector health check ──────────────────────────────────
