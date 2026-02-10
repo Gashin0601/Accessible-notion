@@ -89,64 +89,70 @@ chrome.webNavigation?.onCommitted?.addListener(
 );
 
 // ─── Dev Hot Reload ──────────────────────────────────────────
-// In dev mode (non-minified builds), watch for file changes and auto-reload.
-// This uses chrome.management API to detect the extension's own install type.
+// In dev mode, watch for build timestamp changes and auto-reload.
+// esbuild writes dist/reload.txt with Date.now() on each build.
 // Only runs for "development" (unpacked) extensions.
+
+// After extension reload, re-inject content scripts into existing Notion tabs
+async function reloadNotionTabs(): Promise<void> {
+  try {
+    const tabs = await chrome.tabs.query({
+      url: ['https://www.notion.so/*', 'https://*.notion.site/*'],
+    });
+    for (const tab of tabs) {
+      if (tab.id) {
+        chrome.tabs.reload(tab.id);
+        console.log(`[AccessibleNotion] Reloaded Notion tab ${tab.id}`);
+      }
+    }
+  } catch (err) {
+    console.log('[AccessibleNotion] Failed to reload Notion tabs:', err);
+  }
+}
+
+// On extension update (after chrome.runtime.reload()), reload Notion tabs
+chrome.runtime.onInstalled.addListener(async (details) => {
+  if (details.reason === 'update') {
+    // Small delay to ensure service worker is fully initialized
+    setTimeout(() => reloadNotionTabs(), 500);
+  }
+});
+
 (async () => {
   try {
     const self = await chrome.management.getSelf();
     if (self.installType !== 'development') return;
 
-    console.log('[AccessibleNotion] Dev mode detected — hot reload enabled');
+    console.log('[AccessibleNotion] Dev mode — hot reload enabled (timestamp polling)');
 
-    const POLL_INTERVAL = 1000; // 1 second
+    let lastTimestamp = '';
 
-    // Fetch modification timestamps of key files
-    const filesToWatch = [
-      'content/main.js',
-      'background/service-worker.js',
-      'manifest.json',
-    ];
-
-    let lastTimestamps: Record<string, string> = {};
-
-    async function getTimestamps(): Promise<Record<string, string>> {
-      const timestamps: Record<string, string> = {};
-      for (const file of filesToWatch) {
-        try {
-          const url = chrome.runtime.getURL(file);
-          const response = await fetch(url, { method: 'HEAD' });
-          // Use content-length as a proxy for change detection
-          // (last-modified is not reliable for extension files)
-          timestamps[file] = response.headers.get('content-length') ?? '';
-        } catch {
-          timestamps[file] = '';
-        }
+    async function readTimestamp(): Promise<string> {
+      try {
+        const url = chrome.runtime.getURL('reload.txt');
+        const response = await fetch(url, { cache: 'no-store' });
+        return await response.text();
+      } catch {
+        return '';
       }
-      return timestamps;
     }
 
-    // Get initial timestamps
-    lastTimestamps = await getTimestamps();
+    // Get initial timestamp
+    lastTimestamp = await readTimestamp();
 
-    // Poll for changes
+    // Poll every 1.5 seconds
     setInterval(async () => {
       try {
-        const current = await getTimestamps();
-        const changed = filesToWatch.some(
-          (f) => current[f] !== lastTimestamps[f] && lastTimestamps[f] !== '',
-        );
-
-        if (changed) {
-          console.log('[AccessibleNotion] File change detected, reloading...');
+        const current = await readTimestamp();
+        if (current && current !== lastTimestamp && lastTimestamp !== '') {
+          console.log('[AccessibleNotion] Build change detected, reloading extension...');
           chrome.runtime.reload();
         }
-
-        lastTimestamps = current;
+        lastTimestamp = current;
       } catch {
-        // Ignore errors during polling
+        // Ignore polling errors
       }
-    }, POLL_INTERVAL);
+    }, 1500);
   } catch {
     // chrome.management may not be available
   }

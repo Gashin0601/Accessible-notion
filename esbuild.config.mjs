@@ -1,5 +1,5 @@
 import * as esbuild from 'esbuild';
-import { existsSync, mkdirSync, copyFileSync, readdirSync } from 'fs';
+import { existsSync, mkdirSync, copyFileSync, readdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
 const isWatch = process.argv.includes('--watch');
@@ -42,6 +42,21 @@ function copyLocalesDir(src, dest) {
   }
 }
 
+/** Plugin to write reload timestamp after each build */
+const reloadTimestampPlugin = {
+  name: 'reload-timestamp',
+  setup(build) {
+    build.onEnd(() => {
+      const distDir = 'dist';
+      if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true });
+      writeFileSync(join(distDir, 'reload.txt'), String(Date.now()));
+      if (isWatch) {
+        console.log(`Rebuild complete (${new Date().toLocaleTimeString()})`);
+      }
+    });
+  },
+};
+
 const buildOptions = {
   entryPoints: [
     'src/content/main.ts',
@@ -54,6 +69,7 @@ const buildOptions = {
   target: 'chrome120',
   sourcemap: isWatch ? 'inline' : false,
   minify: !isWatch,
+  plugins: [reloadTimestampPlugin],
 };
 
 copyStaticFiles();
