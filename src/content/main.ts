@@ -15,6 +15,7 @@ import { scanAndEnhance, enhanceBlock, enhanceTextbox, enhanceImage, enhanceInli
 import { initTreeEnhancer, enhanceTreeItems, destroyTreeEnhancer } from './tree-enhancer';
 import { resetBlockNavigation } from './block-navigator';
 import { initKeyboardHandler, updateShortcuts, destroyKeyboardHandler } from './keyboard-handler';
+import { initBlockFocusManager, destroyBlockFocusManager, resetBlockFocusManager } from './block-focus-manager';
 import { focusMainContent } from './focus-manager';
 import { scanAndEnhanceTables, destroyTableEnhancer } from './table-enhancer';
 import { initSearchEnhancer, destroySearchEnhancer } from './search-enhancer';
@@ -75,6 +76,9 @@ async function init(): Promise<void> {
 
     // 4. Keyboard shortcuts
     initKeyboardHandler(settings);
+
+    // 4.5. Block focus manager (Navigate/Edit mode for arrow key navigation)
+    initBlockFocusManager();
 
     // 5. DB table enhancement (F-04)
     if (settings.features.dbTableGrid) {
@@ -266,6 +270,7 @@ function handlePageChange(): void {
 
   // Re-run enhancement on page change
   resetBlockNavigation();
+  resetBlockFocusManager();
 
   // Small delay to let Notion finish rendering
   setTimeout(() => {
@@ -327,6 +332,7 @@ function teardown(): void {
   mainObserver = null;
   destroyTreeEnhancer();
   destroyKeyboardHandler();
+  destroyBlockFocusManager();
   destroyTableEnhancer();
   destroySearchEnhancer();
   destroyCommentEnhancer();

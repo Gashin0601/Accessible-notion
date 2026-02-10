@@ -8,6 +8,7 @@
 import { logDebug } from '../shared/logger';
 import { SIDEBAR_NAV, MAIN_FRAME, HEADER, TREE_ITEM } from './selectors';
 import { announce } from './live-announcer';
+import { enterNavigateMode } from './block-focus-manager';
 
 const MODULE = 'FocusManager';
 
@@ -53,21 +54,8 @@ export function focusMainContent(): void {
     return;
   }
 
-  // Try to focus the first block
-  const firstBlock = main.querySelector('div.notion-selectable[data-block-id]') as HTMLElement | null;
-  if (firstBlock) {
-    if (!firstBlock.hasAttribute('tabindex')) {
-      firstBlock.setAttribute('tabindex', '-1');
-    }
-    firstBlock.focus();
-  } else {
-    if (!main.hasAttribute('tabindex')) {
-      main.setAttribute('tabindex', '-1');
-    }
-    main.focus();
-  }
-
-  announce('メインコンテンツ');
+  // Enter navigate mode — focuses the first block with announcement
+  enterNavigateMode();
   logDebug(MODULE, 'Focused main content');
 }
 

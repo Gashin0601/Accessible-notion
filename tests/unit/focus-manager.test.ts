@@ -89,35 +89,39 @@ describe('focus-manager', () => {
       expect(document.activeElement).toBe(firstBlock);
     });
 
-    it('sets tabindex=-1 on the first block if not set', () => {
+    it('sets tabindex=0 on the focused block (navigate mode)', () => {
       createLandmarks();
       const block = document.querySelector('.notion-selectable[data-block-id]') as HTMLElement;
       expect(block.hasAttribute('tabindex')).toBe(false);
 
       focusMainContent();
 
-      expect(block.getAttribute('tabindex')).toBe('-1');
+      expect(block.getAttribute('tabindex')).toBe('0');
     });
 
-    it('focuses main frame when no blocks exist', () => {
+    it('announces block not found when no blocks exist', async () => {
       const main = document.createElement('main');
       main.classList.add('notion-frame');
       document.body.appendChild(main);
 
       focusMainContent();
 
-      expect(document.activeElement).toBe(main);
-      expect(main.getAttribute('tabindex')).toBe('-1');
+      await new Promise((r) => requestAnimationFrame(r));
+
+      const live = document.querySelector('[aria-live="polite"]');
+      expect(live?.textContent).toContain('ブロックが見つかりません');
     });
 
-    it('announces メインコンテンツ', async () => {
+    it('announces block info on focus', async () => {
       createLandmarks();
       focusMainContent();
 
       await new Promise((r) => requestAnimationFrame(r));
 
       const live = document.querySelector('[aria-live="polite"]');
-      expect(live?.textContent).toBe('メインコンテンツ');
+      // enterNavigateMode announces block type and position
+      expect(live?.textContent).toContain('ブロック');
+      expect(live?.textContent).toContain('1/1');
     });
 
     it('announces error when main not found', async () => {
