@@ -21,7 +21,7 @@ import { initSearchEnhancer, destroySearchEnhancer } from './search-enhancer';
 import { initCommentEnhancer, destroyCommentEnhancer } from './comment-enhancer';
 import { initModalEnhancer, destroyModalEnhancer } from './modal-enhancer';
 import { initPopupEnhancer, destroyPopupEnhancer } from './popup-enhancer';
-import { BLOCK_SELECTABLE, TEXTBOX, SIDEBAR_NAV, TREE_ITEM } from './selectors';
+import { BLOCK_SELECTABLE, TEXTBOX, SIDEBAR_NAV, TREE_ITEM, MAIN_FRAME } from './selectors';
 
 const MODULE = 'Main';
 
@@ -103,13 +103,17 @@ async function init(): Promise<void> {
     // 12. Side peek enhancement
     enhanceSidePeek();
 
-    // 13. Start DOM observer for ongoing changes
+    // 13. Home page & inbox panel enhancement
+    enhanceHomePage();
+    enhanceInboxPanel();
+
+    // 14. Start DOM observer for ongoing changes
     startObserver();
 
-    // 14. Settings change listener
+    // 15. Settings change listener
     onSettingsChanged(handleSettingsChange);
 
-    // 15. SPA navigation detection
+    // 16. SPA navigation detection
     startNavigationDetection();
 
     logInfo(MODULE, 'Initialization complete');
@@ -207,6 +211,10 @@ function processNewNodes(mutations: MutationRecord[]): void {
 
   // Side peek may have opened
   enhanceSidePeek();
+
+  // Home page or inbox may need enhancement
+  enhanceHomePage();
+  enhanceInboxPanel();
 }
 
 /**
@@ -243,6 +251,8 @@ function handlePageChange(): void {
 
     enhanceTopbar();
     enhanceSidePeek();
+    enhanceHomePage();
+    enhanceInboxPanel();
 
     // Extract page title for announcement
     const titleEl = document.querySelector('.notion-page-block h1, [class*="page-title"]');
@@ -466,6 +476,137 @@ function enhanceSidebarSections(): void {
   }
 
   logDebug(MODULE, 'Sidebar sections enhanced');
+}
+
+// ─── Home page enhancement ──────────────────────────────────
+function enhanceHomePage(): void {
+  // Only run on the home page (identified by URL or content)
+  const homeHeader = document.querySelector<HTMLElement>('.notion-home-page, [class*="home-page"]');
+  // Alternative detection: look for the home content sections
+  const mainFrame = document.querySelector<HTMLElement>(MAIN_FRAME);
+  if (!mainFrame) return;
+
+  // Check if already enhanced
+  if (mainFrame.hasAttribute(EXTENSION_ATTR + '-home')) return;
+
+  // Look for home page section headers
+  const sectionNames = ['最近のアクセス', '今後のイベント', 'マイタスク', 'Recent', 'Upcoming events', 'My tasks'];
+  const allSpans = mainFrame.querySelectorAll<HTMLElement>('span, div');
+  let homeDetected = false;
+
+  for (const el of allSpans) {
+    const text = el.textContent?.trim();
+    if (!text || el.children.length > 0) continue;
+    if (!sectionNames.includes(text)) continue;
+
+    homeDetected = true;
+
+    // Add heading role to section headers
+    if (!el.getAttribute('role')) {
+      el.setAttribute('role', 'heading');
+      el.setAttribute('aria-level', '2');
+      protect(el);
+    }
+
+    // Find and enhance the section container
+    let sectionContainer = el.parentElement;
+    for (let i = 0; i < 4; i++) {
+      if (!sectionContainer) break;
+      // A section container typically has significant height and width
+      const rect = sectionContainer.getBoundingClientRect();
+      if (rect.height > 100 && rect.width > 300) break;
+      sectionContainer = sectionContainer.parentElement;
+    }
+
+    if (sectionContainer && !sectionContainer.getAttribute('role')) {
+      sectionContainer.setAttribute('role', 'region');
+      sectionContainer.setAttribute('aria-label', text);
+      protect(sectionContainer);
+    }
+  }
+
+  if (!homeDetected) return;
+
+  // Enhance page cards in "最近のアクセス"
+  const pageLinks = mainFrame.querySelectorAll<HTMLAnchorElement>('a[role="link"]');
+  for (const link of pageLinks) {
+    if (link.getAttribute('aria-label')) continue;
+
+    // Extract page title from the card (separate title from date info)
+    const titleEl = link.querySelector<HTMLElement>('[class*="title"], [class*="name"]');
+    const title = titleEl?.textContent?.trim();
+
+    if (title) {
+      link.setAttribute('aria-label', title);
+    } else {
+      // Fallback: try to separate title from date
+      const fullText = link.textContent?.trim() ?? '';
+      // Date patterns: "2日前", "1時間前", "3分前", "2025年9月18日", "2025/10/31"
+      const datePattern = /\d+[日時分秒]前$|\d{4}年\d+月\d+日$|\d{4}\/\d+\/\d+$/;
+      const cleaned = fullText.replace(datePattern, '').trim();
+      if (cleaned && cleaned.length < 60 && cleaned !== fullText) {
+        link.setAttribute('aria-label', cleaned);
+      }
+    }
+  }
+
+  mainFrame.setAttribute(EXTENSION_ATTR + '-home', 'true');
+  logDebug(MODULE, 'Home page enhanced');
+}
+
+// ─── Inbox panel enhancement ────────────────────────────────
+function enhanceInboxPanel(): void {
+  // Find the inbox panel — it's a side panel with "受信トレイ" header
+  const allRegions = document.querySelectorAll<HTMLElement>('[role="region"]');
+  for (const region of allRegions) {
+    // Skip already labeled regions
+    if (region.getAttribute('aria-label')) continue;
+    if (region.hasAttribute(EXTENSION_ATTR + '-inbox')) continue;
+
+    // Check if this is the inbox panel
+    const rect = region.getBoundingClientRect();
+    if (rect.width < 200 || rect.width > 500 || rect.height < 300) continue;
+
+    // Look for "受信トレイ" text inside
+    const headerEl = Array.from(region.querySelectorAll<HTMLElement>('*')).find(el =>
+      (el.textContent?.trim() === '受信トレイ' || el.textContent?.trim() === 'Inbox')
+      && el.children.length === 0
+    );
+    if (!headerEl) continue;
+
+    // Found the inbox panel
+    region.setAttribute('aria-label', '受信トレイ');
+    protect(region);
+
+    // Make the header a proper heading
+    if (!headerEl.getAttribute('role')) {
+      headerEl.setAttribute('role', 'heading');
+      headerEl.setAttribute('aria-level', '1');
+    }
+
+    // Find and enhance notification items
+    const notifItems = region.querySelectorAll<HTMLElement>('div[role="button"]');
+    let notifCount = 0;
+    for (const item of notifItems) {
+      const text = item.textContent?.trim() ?? '';
+      // Skip small icon buttons (they already have labels)
+      if (item.getAttribute('aria-label')) continue;
+      const itemRect = item.getBoundingClientRect();
+      if (itemRect.width < 200) continue;
+
+      // This is likely a notification item
+      if (text.length > 10 && !item.getAttribute('aria-label')) {
+        // Extract meaningful label from notification text
+        const label = text.substring(0, 60) + (text.length > 60 ? '…' : '');
+        item.setAttribute('aria-label', label);
+        notifCount++;
+      }
+    }
+
+    region.setAttribute(EXTENSION_ATTR + '-inbox', 'true');
+    logDebug(MODULE, `Inbox panel enhanced: ${notifCount} notifications`);
+    break;
+  }
 }
 
 // ─── Selector health check ──────────────────────────────────

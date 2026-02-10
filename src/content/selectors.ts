@@ -97,6 +97,13 @@ export const MODAL_OVERLAY = '.notion-overlay-container [role="dialog"]';
 export const NOTION_STATUS = '[role="status"][aria-live]';
 export const NOTION_ALERT = '[role="alert"][aria-live]';
 
+// ─── Inbox Panel ────────────────────────────────────────────
+export const INBOX_PANEL = '.notion-inbox-panel, [class*="inbox-panel"]';
+
+// ─── Settings Dialog ────────────────────────────────────────
+export const SETTINGS_TABLIST = '[role="dialog"] [role="tablist"]';
+export const SETTINGS_TAB = '[role="dialog"] [role="tab"]';
+
 // ─── Misc ────────────────────────────────────────────────────
 export const TOPBAR_BREADCRUMB = '.shadow-cursor-breadcrumb, .notion-topbar-breadcrumb';
 export const HOVER_ONLY_CONTROLS = '.notion-selectable > [style*="opacity: 0"], .notion-block-handle';

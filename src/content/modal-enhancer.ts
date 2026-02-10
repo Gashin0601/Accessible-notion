@@ -15,6 +15,11 @@ const MODULE = 'ModalEnhancer';
 
 let observer: MutationObserver | null = null;
 
+/** Request DOMLock protection for an element's ARIA attributes */
+function protect(el: Element): void {
+  el.dispatchEvent(new CustomEvent('accessible-notion-protect', { bubbles: false }));
+}
+
 /** Selector for focusable elements within a dialog */
 const FOCUSABLE_SELECTOR = [
   'a[href]',
@@ -85,13 +90,13 @@ function removeFocusTrap(): void {
 function detectDialogType(dialog: HTMLElement): string {
   const text = dialog.textContent ?? '';
 
+  // Settings dialog (check first — settings contains many other keywords)
+  if (dialog.querySelector('[id^="settings-tab-"]') || dialog.querySelector('[role="tablist"][aria-orientation="vertical"]')) {
+    return 'settings';
+  }
   // Share dialog
   if (text.includes('共有') || text.includes('Share') || text.includes('リンクをコピー') || text.includes('Copy link')) {
     return 'share';
-  }
-  // Settings dialog
-  if (text.includes('設定') || text.includes('Settings') || text.includes('Preferences')) {
-    return 'settings';
   }
   // Import/Export dialog
   if (text.includes('インポート') || text.includes('エクスポート') || text.includes('Import') || text.includes('Export')) {
@@ -132,9 +137,13 @@ function getDialogLabel(type: string): string {
  * Enhance specific dialog types with deeper ARIA semantics.
  */
 function enhanceDialogByType(dialog: HTMLElement, type: string): void {
+  logDebug(MODULE, 'Dialog type detected:', type);
   switch (type) {
     case 'share':
       enhanceShareDialog(dialog);
+      break;
+    case 'settings':
+      enhanceSettingsDialog(dialog);
       break;
     case 'date-picker':
       enhanceDatePicker(dialog);
@@ -167,6 +176,152 @@ function enhanceShareDialog(dialog: HTMLElement): void {
   });
 
   logDebug(MODULE, 'Enhanced share dialog');
+}
+
+function enhanceSettingsDialog(dialog: HTMLElement): void {
+  // Settings dialog content may be re-rendered by React after the dialog appears.
+  // Apply enhancements with increasing delays to catch late-rendered content.
+  applySettingsEnhancements(dialog);
+  setTimeout(() => applySettingsEnhancements(dialog), 500);
+  setTimeout(() => applySettingsEnhancements(dialog), 1500);
+
+  // Also observe mutations within the dialog to catch React re-renders
+  let settingsDebounce: ReturnType<typeof setTimeout> | null = null;
+  const settingsObserver = new MutationObserver(() => {
+    if (!document.contains(dialog)) {
+      settingsObserver.disconnect();
+      return;
+    }
+    if (settingsDebounce) clearTimeout(settingsDebounce);
+    settingsDebounce = setTimeout(() => applySettingsEnhancements(dialog), 200);
+  });
+  settingsObserver.observe(dialog, { childList: true, subtree: true });
+
+  // Clean up observer when dialog is removed
+  const cleanupObserver = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      for (const node of m.removedNodes) {
+        if (node === dialog || (node instanceof HTMLElement && node.contains(dialog))) {
+          settingsObserver.disconnect();
+          cleanupObserver.disconnect();
+          return;
+        }
+      }
+    }
+  });
+  cleanupObserver.observe(document.body, { childList: true, subtree: true });
+}
+
+function applySettingsEnhancements(dialog: HTMLElement): void {
+  // 1. Label the tablist (sidebar navigation)
+  const tablist = dialog.querySelector<HTMLElement>('[role="tablist"]');
+  logDebug(MODULE, 'Settings tablist found:', !!tablist, 'label:', tablist?.getAttribute('aria-label'));
+  if (tablist && !tablist.getAttribute('aria-label')) {
+    tablist.setAttribute('aria-label', '設定カテゴリ');
+    protect(tablist);
+    logDebug(MODULE, 'Settings tablist labeled');
+  }
+
+  // 2. Group section headings in the sidebar
+  // Notion renders category labels (アカウント, ワークスペース, etc.) as plain divs
+  const sectionLabels = [
+    'アカウント', 'ワークスペース', '機能', 'インテグレーション', '管理者', 'アクセスと請求',
+    'Account', 'Workspace', 'Features', 'Integrations', 'Admin', 'Access & Billing',
+  ];
+
+  if (tablist) {
+    const allEls = tablist.querySelectorAll<HTMLElement>('*');
+    for (const el of allEls) {
+      const text = el.textContent?.trim();
+      if (!text || el.children.length > 0) continue;
+      if (!sectionLabels.includes(text)) continue;
+
+      // This is a section heading — find the parent container that holds the tabs below it
+      let groupContainer = el.parentElement;
+      // Walk up to find a div that contains both the heading text and tab elements
+      for (let i = 0; i < 3; i++) {
+        if (!groupContainer) break;
+        const hasTabs = groupContainer.querySelector('[role="tab"]');
+        if (hasTabs && groupContainer !== tablist) break;
+        groupContainer = groupContainer.parentElement;
+      }
+
+      if (groupContainer && groupContainer !== tablist && !groupContainer.getAttribute('role')) {
+        groupContainer.setAttribute('role', 'group');
+        groupContainer.setAttribute('aria-label', text);
+        protect(groupContainer);
+      }
+    }
+  }
+
+  // 3. Label dropdown buttons that lack aria-label
+  const dropdowns = dialog.querySelectorAll<HTMLElement>('div[role="button"][aria-haspopup]');
+  for (const btn of dropdowns) {
+    if (btn.getAttribute('aria-label')) continue;
+    const text = btn.textContent?.trim() ?? '';
+    if (!text) continue;
+
+    // Try to find the setting label nearby (typically in a sibling or parent)
+    const parent = btn.closest<HTMLElement>('[style]');
+    if (!parent) {
+      btn.setAttribute('aria-label', text);
+      protect(btn);
+      continue;
+    }
+
+    // Look for label text in preceding siblings or parent
+    const allText = parent.textContent?.trim() ?? '';
+    // The label is the parent text minus the button text
+    const labelText = allText.replace(text, '').trim();
+    if (labelText && labelText.length < 40) {
+      btn.setAttribute('aria-label', `${labelText}: ${text}`);
+    } else {
+      btn.setAttribute('aria-label', text);
+    }
+    protect(btn);
+  }
+
+  // 4. Enhance content headings in the settings panel
+  const tabpanel = dialog.querySelector<HTMLElement>('[role="tabpanel"]');
+  if (tabpanel) {
+    // Find bold/large text that serve as section headings
+    const allEls = tabpanel.querySelectorAll<HTMLElement>('*');
+    for (const el of allEls) {
+      if (el.children.length > 0) continue;
+      const text = el.textContent?.trim();
+      if (!text || text.length > 40) continue;
+
+      const style = getComputedStyle(el);
+      const fw = parseInt(style.fontWeight);
+      const fs = parseFloat(style.fontSize);
+
+      // Section headers: bold and large (>=16px, weight >= 600)
+      if (fw >= 600 && fs >= 16 && !el.getAttribute('role')) {
+        el.setAttribute('role', 'heading');
+        el.setAttribute('aria-level', '2');
+        protect(el);
+      }
+      // Sub-section headers: semi-bold and medium (>=14px, weight >= 500)
+      else if (fw >= 500 && fs >= 14 && fs < 16 && !el.getAttribute('role')
+        && el.tagName === 'DIV' && el.parentElement?.querySelector('[role="switch"], [role="button"][aria-haspopup]')) {
+        el.setAttribute('role', 'heading');
+        el.setAttribute('aria-level', '3');
+        protect(el);
+      }
+    }
+  }
+
+  // 5. Enhance close button
+  const closeBtn = Array.from(dialog.querySelectorAll<HTMLElement>('[role="button"], button')).find(b => {
+    const text = b.textContent?.trim();
+    return !text && b.querySelector('svg');
+  });
+  if (closeBtn && !closeBtn.getAttribute('aria-label')) {
+    closeBtn.setAttribute('aria-label', '閉じる');
+    protect(closeBtn);
+  }
+
+  logDebug(MODULE, 'Enhanced settings dialog');
 }
 
 function enhanceDatePicker(dialog: HTMLElement): void {
@@ -236,6 +391,23 @@ function enhanceDialog(dialog: HTMLElement): void {
   // Apply type-specific enhancements regardless of label source
   const dialogType = detectDialogType(dialog);
   enhanceDialogByType(dialog, dialogType);
+
+  // If type was 'generic', the dialog content may not be rendered yet.
+  // Re-detect after React populates the dialog.
+  if (dialogType === 'generic') {
+    setTimeout(() => {
+      const newType = detectDialogType(dialog);
+      if (newType !== 'generic') {
+        logDebug(MODULE, 'Re-detected dialog type:', newType);
+        enhanceDialogByType(dialog, newType);
+        // Update label if we now have a better one
+        const specificLabel = getDialogLabel(newType);
+        if (specificLabel) {
+          dialog.setAttribute('aria-label', specificLabel);
+        }
+      }
+    }, 500);
+  }
 
   // Set aria-modal
   dialog.setAttribute('aria-modal', 'true');
