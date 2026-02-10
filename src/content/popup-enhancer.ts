@@ -32,31 +32,58 @@ let highlightSyncTimer: ReturnType<typeof setInterval> | null = null;
 const POPUP_MARKER = EXTENSION_ATTR + '-popup';
 
 /** Detect popup type from its content */
-type PopupType = 'slash-command' | 'mention' | 'turn-into' | 'color-picker' | 'block-action' | 'generic';
+type PopupType = 'slash-command' | 'mention' | 'turn-into' | 'color-picker' | 'block-action' | 'ai-panel' | 'property-editor' | 'link-preview' | 'emoji-picker' | 'generic';
 
 /**
  * Determine what kind of popup this dialog is.
  */
 function detectPopupType(dialog: HTMLElement): PopupType {
   const listbox = dialog.querySelector('[role="listbox"]');
+  const text = dialog.textContent ?? '';
 
   if (listbox) {
-    const text = listbox.textContent ?? '';
+    const lbText = listbox.textContent ?? '';
 
     // Slash command menu: has block type options like テキスト, 見出し
-    if (text.includes('テキスト') && (text.includes('見出し') || text.includes('Heading'))) {
+    if (lbText.includes('テキスト') && (lbText.includes('見出し') || lbText.includes('Heading'))) {
       return 'slash-command';
     }
 
     // Turn-into menu: has block type options but triggered from block menu
-    if (text.includes('テキスト') && text.includes('トグル')) {
+    if (lbText.includes('テキスト') && lbText.includes('トグル')) {
       return 'turn-into';
     }
 
     // Color/background picker
-    if (text.includes('デフォルト') && (text.includes('グレー') || text.includes('ブラウン'))) {
+    if (lbText.includes('デフォルト') && (lbText.includes('グレー') || lbText.includes('ブラウン'))) {
       return 'color-picker';
     }
+  }
+
+  // Notion AI panel: has AI-specific content
+  if (text.includes('AIに依頼') || text.includes('Ask AI')
+    || text.includes('文章を改善する') || text.includes('Improve writing')
+    || dialog.querySelector('[class*="ai-action"], [class*="notion-ai"]')) {
+    return 'ai-panel';
+  }
+
+  // Property editor: has property type or config elements
+  if (text.includes('プロパティの編集') || text.includes('Edit property')
+    || text.includes('プロパティタイプ') || text.includes('Property type')
+    || (dialog.querySelector('[class*="property"]') && dialog.querySelector('input, select, [role="combobox"]'))) {
+    return 'property-editor';
+  }
+
+  // Emoji picker
+  if (dialog.querySelector('[class*="emoji-picker"], [class*="emoji-grid"]')
+    || (text.includes('スマイリーと人々') || text.includes('Smileys'))) {
+    return 'emoji-picker';
+  }
+
+  // Link preview/page preview popup
+  if (dialog.querySelector('[class*="link-preview"], [class*="page-preview"]')
+    || dialog.querySelector('[class*="bookmark-info"]')) {
+    return 'link-preview';
   }
 
   // Block action menu: has menu with items like 削除, 複製
@@ -86,6 +113,10 @@ function getPopupLabel(type: PopupType): string {
     case 'turn-into': return 'ブロックタイプ変更';
     case 'color-picker': return 'カラーピッカー';
     case 'block-action': return 'ブロック操作';
+    case 'ai-panel': return 'Notion AI';
+    case 'property-editor': return 'プロパティ編集';
+    case 'link-preview': return 'リンクプレビュー';
+    case 'emoji-picker': return '絵文字ピッカー';
     case 'generic': return 'メニュー';
   }
 }
@@ -348,6 +379,18 @@ function enhancePopup(dialog: HTMLElement): void {
     case 'color-picker':
       enhanceColorPicker(dialog);
       break;
+    case 'ai-panel':
+      enhanceAIPanel(dialog);
+      break;
+    case 'property-editor':
+      enhancePropertyEditor(dialog);
+      break;
+    case 'emoji-picker':
+      enhanceEmojiPicker(dialog);
+      break;
+    case 'link-preview':
+      enhanceLinkPreview(dialog);
+      break;
     case 'generic':
       enhanceGenericPopup(dialog);
       break;
@@ -402,28 +445,41 @@ function reEnhanceActivePopup(): void {
 }
 
 // ─── Inline Toolbar Enhancement ─────────────────────────────
+
 /**
- * Notion inline toolbar button label map.
- * Keys are SVG path identifiers or text content for matching.
+ * SVG class → aria-label map for Notion inline toolbar icon buttons.
+ * Based on observed DOM: each toolbar button contains an SVG whose class name
+ * uniquely identifies the action.
  */
-const TOOLBAR_BUTTON_LABELS: Record<string, string> = {
-  '文章を改善する': 'AIで文章を改善する',
-  'AIに依頼': 'AIに依頼',
-  'コメント': 'コメント',
-  'リンク': 'リンク',
+const SVG_CLASS_LABELS: Record<string, string> = {
+  magicWand:                  'AIで文章を改善する',
+  commentFilled:              'コメント',
+  commentPencil:              '提案を編集',
+  emojiFacePlus:              'リアクション',
+  textBoldSmall:              '太字 (Ctrl+B)',
+  textItalicSmall:            'イタリック (Ctrl+I)',
+  textUnderlineSmall:         '下線 (Ctrl+U)',
+  textStrikethroughSmall:     '取り消し線 (Ctrl+Shift+S)',
+  codeSmall:                  'コード (Ctrl+E)',
+  squareRootSmall:            '数式',
+  linkSmall:                  'リンク (Ctrl+K)',
+  ellipsisSmall:              'その他のオプション',
+  arrowChevronSingleDownSmall: '',  // dropdown indicator — label comes from text content
 };
 
-/** SVG icon heuristics for toolbar buttons (by viewBox or path characteristics) */
-const TOOLBAR_ICON_LABELS: Array<{ test: (svg: SVGElement) => boolean; label: string }> = [
-  { test: (svg) => svg.innerHTML.includes('M') && svg.innerHTML.includes('font-weight') || false, label: '太字 (Ctrl+B)' },
-  { test: (svg) => svg.innerHTML.includes('font-style: italic') || false, label: 'イタリック (Ctrl+I)' },
-  { test: (svg) => svg.innerHTML.includes('text-decoration: line-through') || false, label: '取り消し線 (Ctrl+Shift+S)' },
-  { test: (svg) => svg.innerHTML.includes('underline') || false, label: '下線 (Ctrl+U)' },
-  { test: (svg) => svg.innerHTML.includes('code') || false, label: 'コード (Ctrl+E)' },
-];
+/** Text content → aria-label for text-based toolbar buttons */
+const TOOLBAR_TEXT_LABELS: Record<string, string> = {
+  '文章を改善する': 'AIで文章を改善する',
+  'AIに依頼':       'AIに依頼',
+  'コメント':       'コメント',
+};
 
 /**
  * Enhance the inline text formatting toolbar (.notion-text-action-menu).
+ *
+ * Strategy: Find all role="button" elements within the toolbar (they may be
+ * direct children of the button container OR nested inside zero-width wrapper
+ * divs like data-popup-origin). Label each by its SVG class name.
  */
 function enhanceInlineToolbar(toolbar: HTMLElement): void {
   if (toolbar.hasAttribute(POPUP_MARKER)) return;
@@ -431,48 +487,50 @@ function enhanceInlineToolbar(toolbar: HTMLElement): void {
   toolbar.setAttribute('role', 'toolbar');
   toolbar.setAttribute('aria-label', 'テキスト書式設定ツールバー');
 
-  // Find button container — it's nested ~2 levels deep and has the most children
-  const buttonContainer = findButtonContainer(toolbar);
-  if (!buttonContainer) return;
+  // Find ALL role="button" elements in the toolbar (they can be at any nesting depth)
+  const buttons = toolbar.querySelectorAll<HTMLElement>('[role="button"]');
 
-  for (let i = 0; i < buttonContainer.children.length; i++) {
-    const child = buttonContainer.children[i] as HTMLElement;
-    if (!child) continue;
+  for (const btn of buttons) {
+    const rect = btn.getBoundingClientRect();
 
-    const rect = child.getBoundingClientRect();
-
-    // Skip separators (width <= 2)
-    if (rect.width <= 2) continue;
-
-    // Skip hidden elements (data-popup-origin with 0 size)
+    // Skip zero-size (truly hidden) buttons
     if (rect.width === 0 && rect.height === 0) continue;
 
-    const text = child.textContent?.trim() ?? '';
-    const role = child.getAttribute('role');
+    const text = btn.textContent?.trim() ?? '';
 
-    // Ensure role="button" for interactive elements
-    if (!role && rect.width > 20) {
-      child.setAttribute('role', 'button');
-      child.setAttribute('tabindex', '0');
+    // Skip if already properly labeled (override Notion's wrong "説明" fallback)
+    const existing = btn.getAttribute('aria-label');
+    if (existing && existing !== '説明' && existing !== '書式ボタン'
+      && existing !== 'コメントを書く') continue;
+
+    // 1) SVG class-based matching (most reliable for icon buttons)
+    const svg = btn.querySelector('svg');
+    const svgLabel = svg ? getSvgLabel(svg) : null;
+    if (svgLabel) {
+      btn.setAttribute('aria-label', svgLabel);
+      continue;
     }
 
-    // Add aria-label if missing
-    if (!child.getAttribute('aria-label')) {
-      // Try text-based label
-      if (text && TOOLBAR_BUTTON_LABELS[text]) {
-        child.setAttribute('aria-label', TOOLBAR_BUTTON_LABELS[text]);
-      } else if (text && text.length < 30) {
-        child.setAttribute('aria-label', text);
+    // 2) Text-based matching for labeled buttons
+    if (text && TOOLBAR_TEXT_LABELS[text]) {
+      btn.setAttribute('aria-label', TOOLBAR_TEXT_LABELS[text]);
+      continue;
+    }
+
+    // 3) Dropdown with text (e.g. "テキスト" block type selector, "A" color picker)
+    if (btn.getAttribute('aria-haspopup') === 'dialog' && text) {
+      if (text === 'A' || (text.length <= 2 && text.includes('A'))) {
+        btn.setAttribute('aria-label', 'テキストカラー');
       } else {
-        // Try SVG-based label (icon buttons)
-        const svg = child.querySelector('svg');
-        if (svg) {
-          const iconLabel = guessIconLabel(child, i, buttonContainer);
-          if (iconLabel) {
-            child.setAttribute('aria-label', iconLabel);
-          }
-        }
+        btn.setAttribute('aria-label', `ブロックタイプ: ${text}`);
       }
+      continue;
+    }
+
+    // 4) Short text content as label
+    if (text && text.length < 30) {
+      btn.setAttribute('aria-label', text);
+      continue;
     }
   }
 
@@ -481,69 +539,181 @@ function enhanceInlineToolbar(toolbar: HTMLElement): void {
 }
 
 /**
- * Guess the label for an icon-only toolbar button based on position and content.
- * Position-based since Notion's toolbar follows a consistent order.
+ * Extract label from an SVG element by matching its class name.
  */
-function guessIconLabel(button: HTMLElement, index: number, container: HTMLElement): string {
-  // Count visible buttons (non-separator, non-hidden) up to this index
-  let visibleIdx = 0;
-  for (let i = 0; i < index; i++) {
-    const child = container.children[i] as HTMLElement;
-    if (!child) continue;
-    const r = child.getBoundingClientRect();
-    if (r.width > 2 && r.width > 0 && r.height > 0) visibleIdx++;
+function getSvgLabel(svg: SVGElement): string | null {
+  const cls = svg.getAttribute('class') ?? '';
+  // Class names may include multiple classes; check each token
+  for (const token of cls.split(/\s+/)) {
+    if (token in SVG_CLASS_LABELS) {
+      const label = SVG_CLASS_LABELS[token];
+      return label || null;  // empty string means "skip — use text instead"
+    }
   }
-
-  // Check if button has aria-haspopup or dropdown indicator
-  const hasPopup = button.getAttribute('aria-haspopup') || button.querySelector('[class*="chevron"], [class*="arrow"]');
-
-  // Look for distinctive text content
-  const text = button.textContent?.trim();
-  if (text) {
-    if (text === 'A') return 'テキストカラー';
-    if (text.includes('⋮') || text === '...') return 'その他のオプション';
-  }
-
-  // Font style buttons are typically icon-only SVG buttons
-  // Order after AI/comment/separator buttons
-  const iconLabels = [
-    '太字',
-    'イタリック',
-    '下線',
-    '取り消し線',
-    'コード',
-    'リンク',
-    'テキストカラー',
-    'その他',
-  ];
-
-  // Icon buttons start after the text-labeled buttons and separators
-  // This is a fallback — position-based guessing
-  if (visibleIdx >= 3 && visibleIdx - 3 < iconLabels.length) {
-    return iconLabels[visibleIdx - 3];
-  }
-
-  return '書式ボタン';
+  return null;
 }
 
-function findButtonContainer(toolbar: HTMLElement): HTMLElement | null {
-  // Find the deepest element with the most children (the button row)
-  let best: HTMLElement | null = null;
-  let bestCount = 0;
 
-  function walk(el: HTMLElement, depth: number): void {
-    if (depth > 5) return;
-    if (el.children.length > bestCount) {
-      bestCount = el.children.length;
-      best = el;
+// ─── AI Panel Enhancement ────────────────────────────────────
+/**
+ * Enhance the Notion AI action panel (triggered by "AIに依頼" or space key).
+ * Contains AI action options like summarize, translate, improve writing, etc.
+ */
+function enhanceAIPanel(dialog: HTMLElement): void {
+  dialog.setAttribute('aria-label', 'Notion AI');
+
+  // AI action buttons
+  const buttons = dialog.querySelectorAll<HTMLElement>('[role="button"], [role="menuitem"]');
+  buttons.forEach((btn) => {
+    if (!btn.getAttribute('aria-label')) {
+      const text = btn.textContent?.trim();
+      if (text && text.length < 60) {
+        btn.setAttribute('aria-label', text);
+      }
     }
-    for (const child of el.children) {
-      if (child instanceof HTMLElement) walk(child, depth + 1);
+  });
+
+  // AI input area
+  const inputs = dialog.querySelectorAll<HTMLElement>('[contenteditable="true"], textarea, input');
+  inputs.forEach((input) => {
+    if (!input.getAttribute('aria-label')) {
+      const placeholder = input.getAttribute('placeholder') ?? '';
+      input.setAttribute('aria-label', placeholder || 'AIへの指示を入力');
+    }
+  });
+
+  // AI-generated content area
+  const contentArea = dialog.querySelector<HTMLElement>('[class*="ai-response"], [class*="ai-content"]');
+  if (contentArea && !contentArea.getAttribute('role')) {
+    contentArea.setAttribute('role', 'region');
+    contentArea.setAttribute('aria-label', 'AI生成コンテンツ');
+    contentArea.setAttribute('aria-live', 'polite');
+  }
+
+  const listbox = dialog.querySelector<HTMLElement>('[role="listbox"]');
+  if (listbox) {
+    enhanceOptions(listbox);
+    startHighlightSync(dialog, listbox);
+  }
+
+  announce('Notion AI');
+  logDebug(MODULE, 'Enhanced AI panel');
+}
+
+// ─── Property Editor Enhancement ─────────────────────────────
+/**
+ * Enhance property editor popups (DB column config, cell editor, etc.)
+ */
+function enhancePropertyEditor(dialog: HTMLElement): void {
+  dialog.setAttribute('aria-label', 'プロパティ編集');
+
+  // Property name input
+  const nameInput = dialog.querySelector<HTMLElement>('input[type="text"], [contenteditable="true"]');
+  if (nameInput && !nameInput.getAttribute('aria-label')) {
+    const placeholder = nameInput.getAttribute('placeholder') ?? '';
+    nameInput.setAttribute('aria-label', placeholder || 'プロパティ名');
+  }
+
+  // Property type selector
+  const typeSelector = dialog.querySelector<HTMLElement>('[role="button"], [role="combobox"]');
+  if (typeSelector && !typeSelector.getAttribute('aria-label')) {
+    const text = typeSelector.textContent?.trim() ?? '';
+    if (text) {
+      typeSelector.setAttribute('aria-label', `プロパティタイプ: ${text}`);
     }
   }
 
-  walk(toolbar, 0);
-  return bestCount >= 5 ? best : null;
+  // Select options (for select/multi-select properties)
+  const options = dialog.querySelectorAll<HTMLElement>('[role="option"]');
+  options.forEach((opt) => {
+    if (!opt.getAttribute('aria-label')) {
+      const text = opt.textContent?.trim();
+      if (text) opt.setAttribute('aria-label', text);
+    }
+  });
+
+  // Tag/chip elements (selected options)
+  const tags = dialog.querySelectorAll<HTMLElement>('[class*="tag"], [class*="chip"], [class*="option"]');
+  tags.forEach((tag) => {
+    if (!tag.getAttribute('role')) {
+      const text = tag.textContent?.trim();
+      if (text && text.length < 40) {
+        tag.setAttribute('role', 'status');
+        tag.setAttribute('aria-label', text);
+      }
+    }
+  });
+
+  const listbox = dialog.querySelector<HTMLElement>('[role="listbox"]');
+  if (listbox) {
+    enhanceOptions(listbox);
+    startHighlightSync(dialog, listbox);
+  }
+
+  announce('プロパティ編集');
+  logDebug(MODULE, 'Enhanced property editor');
+}
+
+// ─── Emoji Picker Enhancement ────────────────────────────────
+/**
+ * Enhance the emoji picker popup.
+ */
+function enhanceEmojiPicker(dialog: HTMLElement): void {
+  dialog.setAttribute('aria-label', '絵文字ピッカー');
+
+  // Search input
+  const searchInput = dialog.querySelector<HTMLElement>('input');
+  if (searchInput && !searchInput.getAttribute('aria-label')) {
+    searchInput.setAttribute('aria-label', '絵文字を検索');
+  }
+
+  // Emoji category tabs
+  const tabs = dialog.querySelectorAll<HTMLElement>('[role="tab"]');
+  tabs.forEach((tab) => {
+    if (!tab.getAttribute('aria-label')) {
+      const text = tab.textContent?.trim() || tab.getAttribute('title') || '';
+      if (text) tab.setAttribute('aria-label', text);
+    }
+  });
+
+  // Emoji grid cells
+  const emojiButtons = dialog.querySelectorAll<HTMLElement>('[role="button"]');
+  emojiButtons.forEach((btn) => {
+    if (!btn.getAttribute('aria-label')) {
+      const emoji = btn.textContent?.trim();
+      const title = btn.getAttribute('title') ?? '';
+      if (title) {
+        btn.setAttribute('aria-label', `${emoji} ${title}`);
+      } else if (emoji && emoji.length <= 4) {
+        btn.setAttribute('aria-label', emoji);
+      }
+    }
+  });
+
+  announce('絵文字ピッカー');
+  logDebug(MODULE, 'Enhanced emoji picker');
+}
+
+// ─── Link Preview Enhancement ────────────────────────────────
+/**
+ * Enhance link/page preview popup.
+ */
+function enhanceLinkPreview(dialog: HTMLElement): void {
+  const title = dialog.querySelector<HTMLElement>('[class*="title"], h1, h2, h3');
+  const titleText = title?.textContent?.trim() ?? '';
+  const url = dialog.querySelector<HTMLAnchorElement>('a[href]')?.href ?? '';
+
+  let label = 'リンクプレビュー';
+  if (titleText) {
+    label = `リンクプレビュー: ${titleText}`;
+  } else if (url) {
+    try {
+      label = `リンクプレビュー: ${new URL(url).hostname}`;
+    } catch { /* ignore */ }
+  }
+
+  dialog.setAttribute('aria-label', label);
+  logDebug(MODULE, 'Enhanced link preview');
 }
 
 // ─── DB Filter/Sort Enhancement ─────────────────────────────
@@ -552,6 +722,9 @@ function findButtonContainer(toolbar: HTMLElement): HTMLElement | null {
  * These popups contain property selectors, operator selectors, and value inputs.
  */
 function enhanceFilterSortPopup(dialog: HTMLElement): void {
+  // Skip search dialogs (handled by search-enhancer)
+  if (dialog.getAttribute(EXTENSION_ATTR) === 'search') return;
+
   // Filter popups have "フィルター" or "Filter" in their content
   const text = dialog.textContent ?? '';
   const isFilter = text.includes('フィルター') || text.includes('Filter');

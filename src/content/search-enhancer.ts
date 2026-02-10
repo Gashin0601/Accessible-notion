@@ -106,10 +106,8 @@ function syncNotionHighlight(dialog: HTMLElement): void {
 function enhanceSearchDialog(dialog: HTMLElement): void {
   if (dialog.hasAttribute(EXTENSION_ATTR)) return;
 
-  // Ensure dialog has proper label
-  if (!dialog.getAttribute('aria-label')) {
-    dialog.setAttribute('aria-label', '検索');
-  }
+  // Always set label — overrides modal-enhancer's generic label
+  dialog.setAttribute('aria-label', '検索');
 
   // Find the results container and enhance it
   enhanceResults(dialog);
@@ -149,10 +147,19 @@ function enhanceResults(dialog: HTMLElement): void {
     count++;
 
     // Build label from page title in result
-    const titleEl = item.querySelector('[class*="title"], [class*="page-title"]');
-    const title = titleEl?.textContent?.trim();
-    if (title && !item.getAttribute('aria-label')) {
-      item.setAttribute('aria-label', title);
+    if (!item.getAttribute('aria-label')) {
+      const titleEl = item.querySelector('[class*="title"], [class*="page-title"]');
+      let title = titleEl?.textContent?.trim();
+      // Fallback: extract first meaningful text from the item
+      if (!title) {
+        const text = item.textContent?.trim() ?? '';
+        // Take the first line (before path/breadcrumb info)
+        const firstLine = text.split(/\s*[—\n]/)[0]?.trim();
+        title = firstLine && firstLine.length < 80 ? firstLine : text.substring(0, 50);
+      }
+      if (title) {
+        item.setAttribute('aria-label', title);
+      }
     }
   });
 
@@ -244,6 +251,16 @@ export function initSearchEnhancer(): void {
           const hasInput = dialog.querySelector('input[type="text"], input:not([type])');
           if (hasInput) {
             enhanceSearchDialog(dialog);
+          }
+        }
+
+        // Also check if a node was added INSIDE an existing dialog
+        // (e.g., input field rendered after dialog container appears)
+        const parentDialog = node.closest?.('[role="dialog"]');
+        if (parentDialog instanceof HTMLElement && !parentDialog.hasAttribute(EXTENSION_ATTR)) {
+          const hasInput = parentDialog.querySelector('input[type="text"], input:not([type])');
+          if (hasInput) {
+            enhanceSearchDialog(parentDialog);
           }
         }
       }

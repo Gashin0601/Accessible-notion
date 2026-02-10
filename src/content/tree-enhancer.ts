@@ -100,6 +100,8 @@ function isCurrentPage(treeItem: Element): boolean {
 export function enhanceTreeItems(): void {
   const treeItems = document.querySelectorAll(`${SIDEBAR_NAV} ${TREE_ITEM}`);
 
+  let hasTabindex0 = false;
+
   for (const item of treeItems) {
     const level = computeLevel(item);
     item.setAttribute('aria-level', String(level));
@@ -110,8 +112,21 @@ export function enhanceTreeItems(): void {
     const name = getCleanPageName(item);
     item.setAttribute('aria-label', name);
 
+    // Ensure roving tabindex: new items get tabindex="-1"
+    if (!item.hasAttribute('tabindex')) {
+      item.setAttribute('tabindex', '-1');
+    }
+    if (item.getAttribute('tabindex') === '0') {
+      hasTabindex0 = true;
+    }
+
     item.setAttribute(EXTENSION_ATTR, 'tree');
     item.dispatchEvent(new CustomEvent('accessible-notion-protect', { bubbles: false }));
+  }
+
+  // Ensure at least one item has tabindex="0" for keyboard accessibility
+  if (!hasTabindex0 && treeItems.length > 0) {
+    treeItems[0].setAttribute('tabindex', '0');
   }
 
   logDebug(MODULE, `Enhanced ${treeItems.length} tree items`);
