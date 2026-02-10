@@ -55,6 +55,7 @@ export const BLOCK_TYPE_MAP: Record<string, BlockTypeInfo> = {
   'table_of_contents-block': { role: 'navigation', description: '目次', descriptionEn: 'Table of contents' },
   'breadcrumb-block':    { role: 'navigation', description: 'パンくずリスト', descriptionEn: 'Breadcrumb' },
   'alias-block':         { role: 'link', description: 'ページリンク', descriptionEn: 'Page link' },
+  'button-block':        { role: 'button', description: 'ボタン', descriptionEn: 'Button' },
 };
 
 export interface BlockTypeInfo {

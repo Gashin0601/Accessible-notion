@@ -64,11 +64,20 @@ export function enhanceBlock(block: Element): void {
 
   // Build aria-label from content
   const rdLabel = block.getAttribute('aria-roledescription') ?? info.description;
-  const text = getBlockText(block);
-  if (text) {
-    block.setAttribute('aria-label', `${rdLabel}: ${text}`);
+
+  // DB blocks: extract title only (not view tabs/content)
+  if (blockType === 'collection_view-block' || blockType === 'collection_view_page-block') {
+    const dbTitle = getDbTitle(block);
+    block.setAttribute('aria-label', dbTitle
+      ? `${rdLabel}: ${dbTitle}`
+      : rdLabel);
   } else {
-    block.setAttribute('aria-label', `${rdLabel} (空)`);
+    const text = getBlockText(block);
+    if (text) {
+      block.setAttribute('aria-label', `${rdLabel}: ${text}`);
+    } else {
+      block.setAttribute('aria-label', `${rdLabel} (空)`);
+    }
   }
 
   // Toggle-specific: aria-expanded
@@ -83,7 +92,7 @@ export function enhanceBlock(block: Element): void {
 
   // Column layout: column count
   if (blockType === 'column_list-block') {
-    const columns = block.querySelectorAll(':scope > div.notion-column-block, :scope > div[class*="notion-column-block"]');
+    const columns = block.querySelectorAll('.notion-column-block');
     if (columns.length > 0) {
       block.setAttribute('aria-label', `${info.description} (${columns.length}列)`);
     }
@@ -91,12 +100,12 @@ export function enhanceBlock(block: Element): void {
 
   // Column: position
   if (blockType === 'column-block') {
-    const parent = block.parentElement;
-    if (parent) {
-      const siblings = Array.from(parent.querySelectorAll(':scope > div.notion-column-block, :scope > div[class*="notion-column-block"]'));
+    const columnList = block.closest('.notion-column_list-block');
+    if (columnList) {
+      const siblings = Array.from(columnList.querySelectorAll('.notion-column-block'));
       const index = siblings.indexOf(block as HTMLElement);
       if (index >= 0) {
-        block.setAttribute('aria-label', `${info.description} (${index + 1}列目)`);
+        block.setAttribute('aria-label', `${info.description} (${index + 1}/${siblings.length}列目)`);
       }
     }
   }
@@ -108,6 +117,33 @@ export function enhanceBlock(block: Element): void {
 
   mark(block);
   protect(block);
+}
+
+/**
+ * Extract DB title from a collection_view block without picking up view tabs/content.
+ */
+function getDbTitle(block: Element): string {
+  // Linked DB: only child is an <a> tag with the DB name
+  const firstChild = block.children[0];
+  if (firstChild?.tagName === 'A') {
+    return firstChild.textContent?.trim() ?? '';
+  }
+
+  // Inline DB: look for collection title / icon area
+  const titleEl = block.querySelector(
+    '[class*="collection-title"], [placeholder*="Untitled"], [placeholder*="無題"]',
+  );
+  if (titleEl?.textContent?.trim()) {
+    return titleEl.textContent.trim();
+  }
+
+  // Fallback: check the page title if this is the top-level DB
+  const pageTitle = document.querySelector('.notion-page-block h1, [class*="page-title"]');
+  if (pageTitle && block.parentElement?.closest('.notion-collection_view-block') === null) {
+    return pageTitle.textContent?.trim() ?? '';
+  }
+
+  return '';
 }
 
 function enhanceToggle(block: Element): void {

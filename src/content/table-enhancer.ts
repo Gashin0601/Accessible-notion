@@ -31,50 +31,69 @@ interface TableInfo {
 
 /**
  * Parse a Notion collection view into a structured table representation.
+ *
+ * Notion table DOM structure (2026-02):
+ *   .notion-table-view
+ *     > .notion-collection_view-block (inner wrapper)
+ *       > div
+ *         > ... > .notion-table-view-header-row
+ *                    > div (gutter) > div (cells wrapper) > div (inner) > div* (header cells)
+ *         > ... > .notion-collection-item[data-block-id]* (data rows)
+ *                    > .notion-table-view-row > div (inner) > div* (row cells, first may be 0px gutter)
  */
 function parseTableView(container: HTMLElement): TableInfo | null {
-  // Notion table views have a specific structure with header and body rows
-  // The exact selectors may vary — we try common patterns
-  const headerRow = container.querySelector(
-    '.notion-table-view-header-row, .notion-collection-header, [class*="header"]',
+  // Find .notion-table-view inside the container, or the container itself
+  const tableView = container.classList.contains('notion-table-view')
+    ? container
+    : container.querySelector('.notion-table-view') as HTMLElement | null;
+  if (!tableView) return null;
+
+  const headerRow = tableView.querySelector(
+    '.notion-table-view-header-row',
   ) as HTMLElement | null;
 
-  const headerCells = headerRow
-    ? Array.from(headerRow.querySelectorAll<HTMLElement>(
-      '[class*="header-cell"], [class*="property-header"], > div > div',
-      ))
-    : [];
+  // Header cells: headerRow > div:nth-child(2) > div > div* (individual columns)
+  let headerCells: HTMLElement[] = [];
+  if (headerRow && headerRow.children.length >= 2) {
+    const cellsContainer = headerRow.children[1] as HTMLElement;
+    const inner = cellsContainer?.children[0] as HTMLElement;
+    if (inner) {
+      headerCells = Array.from(inner.children) as HTMLElement[];
+    }
+  }
 
-  // Data rows — Notion renders visible rows in scrollable container
-  const bodyContainer = container.querySelector(
-    '.notion-table-view-body, .notion-collection-list, [class*="body"]',
+  // Data rows: .notion-collection-item elements inside the table view
+  const dataRows = Array.from(
+    tableView.querySelectorAll<HTMLElement>('.notion-collection-item'),
   );
-  const dataRows = bodyContainer
-    ? Array.from(bodyContainer.querySelectorAll<HTMLElement>(
-      ':scope > [class*="row"], :scope > div > [data-block-id]',
-      ))
-    : [];
 
   if (headerCells.length === 0 && dataRows.length === 0) return null;
 
   return {
-    container,
+    container: tableView,
     headerRow,
     headerCells,
     dataRows,
     getRowCells(row: HTMLElement): HTMLElement[] {
-      return Array.from(row.querySelectorAll<HTMLElement>(
-        ':scope > [class*="cell"], :scope > div > div[class*="property"]',
-      ));
+      const tvRow = row.querySelector('.notion-table-view-row') as HTMLElement | null;
+      if (!tvRow) return [];
+      const inner = tvRow.children[0] as HTMLElement;
+      if (!inner) return [];
+      // Filter out 0px-wide gutter cells
+      return Array.from(inner.children as HTMLCollectionOf<HTMLElement>).filter(
+        (c) => c.offsetWidth > 0,
+      );
     },
   };
 }
 
 /**
  * Inject ARIA table semantics into a Notion collection view.
+ * Accepts either a .notion-collection_view-block or .notion-table-view element.
  */
 export function enhanceTableView(container: HTMLElement): void {
-  if (container.hasAttribute(EXTENSION_ATTR)) return;
+  // Use a table-specific marker (aria-injector uses EXTENSION_ATTR="true" on the same element)
+  if (container.getAttribute(EXTENSION_ATTR) === 'table') return;
 
   const info = parseTableView(container);
   if (!info) {
@@ -82,16 +101,18 @@ export function enhanceTableView(container: HTMLElement): void {
     return;
   }
 
-  // Set role on container
-  container.setAttribute('role', 'grid');
-  container.setAttribute('aria-roledescription', 'データベーステーブル');
-  container.setAttribute('aria-rowcount', String(info.dataRows.length + 1)); // +1 for header
-  container.setAttribute('aria-colcount', String(info.headerCells.length));
+  // Set grid role on the actual .notion-table-view element
+  const gridEl = info.container;
+  gridEl.setAttribute('role', 'grid');
+  gridEl.setAttribute('aria-roledescription', 'データベーステーブル');
+  gridEl.setAttribute('aria-rowcount', String(info.dataRows.length + 1)); // +1 for header
+  gridEl.setAttribute('aria-colcount', String(info.headerCells.length));
 
-  // Try to get DB name
-  const titleEl = container.querySelector('[class*="title"], [class*="collection-title"]');
-  const dbName = titleEl?.textContent?.trim() ?? 'データベース';
-  container.setAttribute('aria-label', `${dbName} テーブル ${info.dataRows.length}行 ${info.headerCells.length}列`);
+  // Get DB name from the parent collection_view block
+  const cvBlock = gridEl.closest('.notion-collection_view-block');
+  const dbLabel = cvBlock?.getAttribute('aria-label') ?? '';
+  const dbName = dbLabel.replace(/^データベース(ページ)?:\s*/, '').trim() || 'データベース';
+  gridEl.setAttribute('aria-label', `${dbName} テーブル ${info.dataRows.length}行 ${info.headerCells.length}列`);
 
   // Header row
   if (info.headerRow) {
@@ -126,7 +147,7 @@ export function enhanceTableView(container: HTMLElement): void {
   });
 
   container.setAttribute(EXTENSION_ATTR, 'table');
-  protect(container);
+  protect(gridEl);
 
   // Protect header cells and data cells from DOMLock reverts
   if (info.headerRow) {
@@ -185,9 +206,10 @@ let tableBodyObserver: MutationObserver | null = null;
  * Set up a MutationObserver on the table body to detect virtual scroll row changes.
  */
 function watchVirtualScroll(container: HTMLElement): void {
-  const bodyContainer = container.querySelector(
-    '.notion-table-view-body, .notion-collection-list, [class*="body"]',
-  );
+  // Find the element that contains .notion-collection-item rows
+  const tableView = container.querySelector('.notion-table-view') ?? container;
+  const firstRow = tableView.querySelector('.notion-collection-item');
+  const bodyContainer = firstRow?.parentElement ?? null;
   if (!bodyContainer) return;
 
   // Debounce re-enhancement
