@@ -608,6 +608,30 @@ function enhanceHomePage(): void {
     }
   }
 
+  // Label icon-only buttons (carousel arrows, expand, add)
+  const svgButtonLabels: Record<string, string> = {
+    arrowChevronLeftSmall: '前へスクロール',
+    arrowChevronRightSmall: '次へスクロール',
+    arrowChevronSingleLeftFillSmall: '前へスクロール',
+    arrowChevronSingleRightFillSmall: '次へスクロール',
+    arrowDiagonalUpRightSmall: '開く',
+    plusFillSmall: '追加',
+  };
+  const iconBtns = mainFrame.querySelectorAll<HTMLElement>('[role="button"]');
+  for (const btn of iconBtns) {
+    if (btn.getAttribute('aria-label')) continue;
+    if (btn.textContent?.trim()) continue;
+    const svg = btn.querySelector('svg');
+    if (!svg) continue;
+    const cls = svg.getAttribute('class') ?? '';
+    for (const token of cls.split(/\s+/)) {
+      if (token in svgButtonLabels) {
+        btn.setAttribute('aria-label', svgButtonLabels[token]);
+        break;
+      }
+    }
+  }
+
   mainFrame.setAttribute(EXTENSION_ATTR + '-home', 'true');
   logDebug(MODULE, 'Home page enhanced');
 }
