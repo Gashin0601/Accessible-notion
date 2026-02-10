@@ -16,6 +16,9 @@ import { announce } from './live-announcer';
 const MODULE = 'TreeEnhancer';
 
 let initialized = false;
+let typeAheadBuffer = '';
+let typeAheadTimer: ReturnType<typeof setTimeout> | null = null;
+const TYPE_AHEAD_TIMEOUT = 500; // ms to wait before clearing buffer
 
 /**
  * Compute the nesting level of a treeitem by counting ancestor treeitems.
@@ -256,6 +259,49 @@ function handleTreeKeydown(event: KeyboardEvent): void {
       }, 500);
       break;
     }
+
+    default: {
+      // Type-ahead search: printable characters jump to matching item
+      if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
+        event.preventDefault();
+        event.stopPropagation();
+        handleTypeAhead(event.key, items, currentIndex);
+      }
+      break;
+    }
+  }
+}
+
+/**
+ * Handle type-ahead search in the tree.
+ * Characters typed within TYPE_AHEAD_TIMEOUT are accumulated as a prefix.
+ */
+function handleTypeAhead(char: string, items: HTMLElement[], currentIndex: number): void {
+  // Reset timer
+  if (typeAheadTimer) clearTimeout(typeAheadTimer);
+  typeAheadTimer = setTimeout(() => {
+    typeAheadBuffer = '';
+  }, TYPE_AHEAD_TIMEOUT);
+
+  typeAheadBuffer += char.toLowerCase();
+
+  // Search from current position forward (wrapping)
+  const startIdx = typeAheadBuffer.length === 1 ? currentIndex + 1 : currentIndex;
+
+  for (let offset = 0; offset < items.length; offset++) {
+    const idx = (startIdx + offset) % items.length;
+    const label = (items[idx].getAttribute('aria-label') ?? '').toLowerCase();
+    if (label.startsWith(typeAheadBuffer)) {
+      focusTreeItem(items[idx]);
+      return;
+    }
+  }
+
+  // No match found
+  if (typeAheadBuffer.length === 1) {
+    // Single char with no match — silently fail
+  } else {
+    announce('一致なし');
   }
 }
 

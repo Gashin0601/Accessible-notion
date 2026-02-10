@@ -16,7 +16,7 @@ import { initTreeEnhancer, enhanceTreeItems, destroyTreeEnhancer } from './tree-
 import { resetBlockNavigation } from './block-navigator';
 import { initKeyboardHandler, updateShortcuts, destroyKeyboardHandler } from './keyboard-handler';
 import { focusMainContent } from './focus-manager';
-import { scanAndEnhanceTables } from './table-enhancer';
+import { scanAndEnhanceTables, destroyTableEnhancer } from './table-enhancer';
 import { initSearchEnhancer, destroySearchEnhancer } from './search-enhancer';
 import { initCommentEnhancer, destroyCommentEnhancer } from './comment-enhancer';
 import { initModalEnhancer, destroyModalEnhancer } from './modal-enhancer';
@@ -256,6 +256,7 @@ function teardown(): void {
   mainObserver = null;
   destroyTreeEnhancer();
   destroyKeyboardHandler();
+  destroyTableEnhancer();
   destroySearchEnhancer();
   destroyCommentEnhancer();
   destroyModalEnhancer();

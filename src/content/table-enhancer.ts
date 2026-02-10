@@ -142,12 +142,77 @@ export function enhanceTableView(container: HTMLElement): void {
 }
 
 /**
+ * Re-enhance rows that were added by virtual scroll.
+ * Notion removes/adds rows dynamically as the user scrolls large tables.
+ */
+function reEnhanceVisibleRows(container: HTMLElement): void {
+  const info = parseTableView(container);
+  if (!info) return;
+
+  let newRows = 0;
+  info.dataRows.forEach((row, rowIdx) => {
+    // Only process rows not yet enhanced
+    if (row.getAttribute('role') === 'row') return;
+
+    row.setAttribute('role', 'row');
+    row.setAttribute('aria-rowindex', String(rowIdx + 2));
+
+    const cells = info.getRowCells(row);
+    cells.forEach((cell, colIdx) => {
+      cell.setAttribute('role', 'gridcell');
+      cell.setAttribute('aria-colindex', String(colIdx + 1));
+      cell.setAttribute('tabindex', '-1');
+      const colName = info.headerCells[colIdx]?.textContent?.trim() ?? `列${colIdx + 1}`;
+      const value = cell.textContent?.trim() ?? '';
+      cell.setAttribute('aria-label', `${colName}: ${value || '空'}`);
+    });
+
+    protect(row);
+    cells.forEach((c) => protect(c));
+    newRows++;
+  });
+
+  // Update total row count
+  if (newRows > 0) {
+    container.setAttribute('aria-rowcount', String(info.dataRows.length + 1));
+    logDebug(MODULE, `Virtual scroll: enhanced ${newRows} new rows`);
+  }
+}
+
+let tableBodyObserver: MutationObserver | null = null;
+
+/**
+ * Set up a MutationObserver on the table body to detect virtual scroll row changes.
+ */
+function watchVirtualScroll(container: HTMLElement): void {
+  const bodyContainer = container.querySelector(
+    '.notion-table-view-body, .notion-collection-list, [class*="body"]',
+  );
+  if (!bodyContainer) return;
+
+  // Debounce re-enhancement
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const vsObserver = new MutationObserver(() => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(() => reEnhanceVisibleRows(container), 100);
+  });
+
+  vsObserver.observe(bodyContainer, { childList: true, subtree: true });
+
+  // Store reference for cleanup
+  if (tableBodyObserver) tableBodyObserver.disconnect();
+  tableBodyObserver = vsObserver;
+}
+
+/**
  * Scan all collection views on the page and enhance them.
  */
 export function scanAndEnhanceTables(): void {
   const views = document.querySelectorAll<HTMLElement>(DB_COLLECTION_VIEW);
   for (const view of views) {
     enhanceTableView(view);
+    watchVirtualScroll(view);
   }
 }
 
@@ -274,4 +339,10 @@ function exitGridMode(container: HTMLElement): void {
   container.focus();
   announce('グリッドモード終了');
   logDebug(MODULE, 'Grid mode exited');
+}
+
+export function destroyTableEnhancer(): void {
+  tableBodyObserver?.disconnect();
+  tableBodyObserver = null;
+  gridModeActive = false;
 }
