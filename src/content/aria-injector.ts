@@ -90,6 +90,26 @@ export function enhanceBlock(block: Element): void {
     enhanceTodo(block);
   }
 
+  // Code block: detect programming language
+  if (blockType === 'code-block') {
+    enhanceCodeBlock(block);
+  }
+
+  // Bookmark block: extract URL/title
+  if (blockType === 'bookmark-block') {
+    enhanceBookmark(block);
+  }
+
+  // File/audio block: extract filename
+  if (blockType === 'file-block' || blockType === 'audio-block') {
+    enhanceFileBlock(block, rdLabel);
+  }
+
+  // Equation block: extract formula text
+  if (blockType === 'equation-block') {
+    enhanceEquation(block, rdLabel);
+  }
+
   // Column layout: column count
   if (blockType === 'column_list-block') {
     const columns = block.querySelectorAll('.notion-column-block');
@@ -144,6 +164,56 @@ function getDbTitle(block: Element): string {
   }
 
   return '';
+}
+
+function enhanceCodeBlock(block: Element): void {
+  // Notion code blocks have a language selector — try to find the language label
+  const langEl = block.querySelector<HTMLElement>('[class*="code-block"] [role="button"], [class*="language"]');
+  const langText = langEl?.textContent?.trim();
+  const codeText = getBlockText(block, 30);
+
+  if (langText && langText.length < 30) {
+    block.setAttribute('aria-label', `コード (${langText}): ${codeText || '空'}`);
+  } else {
+    block.setAttribute('aria-label', `コード: ${codeText || '空'}`);
+  }
+}
+
+function enhanceBookmark(block: Element): void {
+  const link = block.querySelector<HTMLAnchorElement>('a[href]');
+  const titleEl = block.querySelector<HTMLElement>('[class*="title"], [class*="bookmark-title"]');
+  const title = titleEl?.textContent?.trim() ?? link?.textContent?.trim() ?? '';
+  const url = link?.href ?? '';
+
+  if (title) {
+    block.setAttribute('aria-label', `ブックマーク: ${title}`);
+  } else if (url) {
+    // Show domain only for brevity
+    try {
+      const domain = new URL(url).hostname;
+      block.setAttribute('aria-label', `ブックマーク: ${domain}`);
+    } catch {
+      block.setAttribute('aria-label', `ブックマーク: ${url.substring(0, 50)}`);
+    }
+  }
+}
+
+function enhanceFileBlock(block: Element, rdLabel: string): void {
+  const link = block.querySelector<HTMLAnchorElement>('a[href]');
+  const fileName = link?.textContent?.trim() ?? '';
+  if (fileName) {
+    block.setAttribute('aria-label', `${rdLabel}: ${fileName}`);
+  }
+}
+
+function enhanceEquation(block: Element, rdLabel: string): void {
+  // Equation blocks render LaTeX — try to get the annotation/alt text
+  const mathEl = block.querySelector<HTMLElement>('.katex-html, [class*="equation"]');
+  const annotation = block.querySelector<HTMLElement>('annotation');
+  const formula = annotation?.textContent?.trim() ?? mathEl?.textContent?.trim() ?? '';
+  if (formula) {
+    block.setAttribute('aria-label', `${rdLabel}: ${formula.substring(0, 80)}`);
+  }
 }
 
 function enhanceToggle(block: Element): void {

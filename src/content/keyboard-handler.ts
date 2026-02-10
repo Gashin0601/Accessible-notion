@@ -46,6 +46,7 @@ function buildBindings(shortcuts: Record<string, string>): void {
     firstBlock: { action: firstBlock, description: '最初のブロックへ移動' },
     lastBlock: { action: lastBlock, description: '最後のブロックへ移動' },
     dbGridMode: { action: enterGridMode, description: 'DBグリッドモード' },
+    blockActionMenu: { action: openBlockActionMenu, description: 'ブロック操作メニュー' },
     landmarkList: { action: announceLandmarks, description: 'ランドマーク一覧' },
     help: { action: announceHelp, description: 'ヘルプ表示' },
   };
@@ -108,6 +109,31 @@ function handleKeydown(event: KeyboardEvent): void {
       return;
     }
   }
+}
+
+/**
+ * Open the block action menu for the currently focused block.
+ * Simulates right-click on the active block to trigger Notion's context menu.
+ */
+function openBlockActionMenu(): void {
+  const active = document.activeElement as HTMLElement | null;
+  const block = active?.closest('.notion-selectable[data-block-id]') as HTMLElement | null;
+
+  if (!block) {
+    announce('ブロックが選択されていません');
+    return;
+  }
+
+  // Simulate right-click to open Notion's block context menu
+  const rect = block.getBoundingClientRect();
+  const event = new MouseEvent('contextmenu', {
+    bubbles: true,
+    cancelable: true,
+    clientX: rect.left + 10,
+    clientY: rect.top + rect.height / 2,
+    button: 2,
+  });
+  block.dispatchEvent(event);
 }
 
 function announceLandmarks(): void {

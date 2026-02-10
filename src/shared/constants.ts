@@ -37,6 +37,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = {
     firstBlock: 'Alt+Shift+Home',
     lastBlock: 'Alt+Shift+End',
     dbGridMode: 'Alt+Shift+D',
+    blockActionMenu: 'Alt+Shift+A',
     landmarkList: 'Alt+Shift+L',
     help: 'Alt+Shift+/',
   },
