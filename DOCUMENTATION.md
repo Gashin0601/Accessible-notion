@@ -1,7 +1,7 @@
 # DOCUMENTATION.md — Accessible Notion Chrome Extension
 
-> **ステータス**: Draft v0.1（2025-02-10）
-> **最終更新者**: Tech Lead
+> **ステータス**: Draft v0.2（2026-02-10）
+> **最終更新者**: Tech Lead + Claude
 > **本ドキュメントの位置づけ**: 実装・テスト・運用の唯一の起点。後続作業はすべてこのファイルから開始する。
 
 ---
@@ -412,9 +412,24 @@ observer.observe(document.body, {
 3. セレクタのキャッシュ: querySelector の結果を WeakMap で保持
 4. 監視範囲: `document.body` 全体ではなく、Notion のメインコンテナに限定可能か検証
 
-### 6.4 Shadow DOM の扱い
+### 6.4 DOMLock バイパス（実装済み）
 
-Notion は現時点で Shadow DOM を使用していない（要再検証）。もし使用された場合:
+**問題:** Notion の DOMLock（ContentEditableVoid / MaybeContentEditable）は、メインフレーム内の contenteditable 領域で MutationObserver を使い、拡張が注入した ARIA 属性を即座にリバートする。サイドバー（19ブロック）は影響なし。メインフレーム（95ブロック）の全属性が失われる。
+
+**解決策:** `chrome.scripting.executeScript({ world: 'MAIN' })` で DOM ブリッジをページの MAIN ワールドに注入。ブリッジは `Element.prototype.setAttribute/removeAttribute` をパッチし、保護対象要素の ARIA 属性変更を無視する。
+
+**アーキテクチャ:**
+1. Service Worker が `chrome.scripting.executeScript` でブリッジコードを MAIN ワールドに注入
+2. Content Script（Isolated World）が ARIA 属性を設定し、`accessible-notion-protect` CustomEvent を発火
+3. MAIN ワールドのブリッジが CustomEvent をキャッチし、対象要素を WeakSet に登録
+4. DOMLock が revert を試みると、パッチされた `setAttribute/removeAttribute` がブロック
+5. Content Script の `setAttribute` 呼び出しは Isolated World なのでパッチの影響を受けない
+
+**結果:** 114/114 ブロック（サイドバー19 + メインフレーム95）が正常に強化される。
+
+### 6.5 Shadow DOM の扱い
+
+Notion は Shadow DOM を使用していない（確認済み）。もし使用された場合:
 
 1. `chrome.dom.openOrClosedShadowRoot()` API で Shadow Root を取得
 2. Shadow Root 内に別の MutationObserver を設置
@@ -428,35 +443,36 @@ Notion は現時点で Shadow DOM を使用していない（要再検証）。�
 
 ```
 accessible-notion/
-  manifest.json          # Manifest V3
   src/
+    manifest.json          # Manifest V3 (permissions: storage, management, scripting, webNavigation)
     content/
-      main.ts            # エントリポイント。DOM 監視開始・モジュール初期化
-      aria-injector.ts   # ARIA 属性注入ロジック
-      keyboard-handler.ts # カスタムキーボードショートカット
-      focus-manager.ts   # フォーカス制御
-      block-navigator.ts # ブロック間ナビゲーション
-      tree-enhancer.ts   # サイドバーツリー強化
-      table-enhancer.ts  # DB テーブルビュー強化
-      live-announcer.ts  # aria-live による読み上げ通知
-      selectors.ts       # Notion DOM セレクタ定義（一元管理）
-      utils.ts           # ユーティリティ
+      main.ts              # エントリポイント。DOM 監視開始・モジュール初期化
+      aria-injector.ts     # ARIA 属性注入ロジック (role, aria-label, aria-level 等)
+      keyboard-handler.ts  # カスタムキーボードショートカット (Alt+Shift+*)
+      focus-manager.ts     # フォーカス制御 (ランドマーク間移動、保存/復元)
+      block-navigator.ts   # ブロック間ナビゲーション (次/前、見出しジャンプ、先頭/末尾)
+      tree-enhancer.ts     # サイドバーツリー強化 (roving tabindex、タイプアヘッド)
+      table-enhancer.ts    # DB テーブルビュー強化 (grid ARIA、矢印キーナビ、仮想スクロール)
+      search-enhancer.ts   # 検索ダイアログ強化 (listbox/option、結果数読み上げ)
+      comment-enhancer.ts  # コメント強化 (article ロール、Alt+J/K ナビ)
+      modal-enhancer.ts    # モーダル/ダイアログ強化 (フォーカストラップ、トースト)
+      live-announcer.ts    # aria-live による読み上げ通知
+      dom-bridge.ts        # MAIN ワールド注入スクリプト (DOMLock バイパス)
+      selectors.ts         # Notion DOM セレクタ定義（一元管理、28+ ブロックタイプ）
     background/
-      service-worker.ts  # 拡張ライフサイクル管理
-    options/
-      options.html       # 設定画面
-      options.ts         # 設定ロジック
+      service-worker.ts    # 拡張ライフサイクル + DOM ブリッジ注入
     shared/
-      storage.ts         # chrome.storage ラッパー
-      messages.ts        # メッセージパッシング型定義
-      constants.ts       # 定数
-      i18n.ts            # 国際化（日本語 / 英語）
-  _locales/
-    ja/messages.json
-    en/messages.json
-  assets/
-    icons/               # 拡張アイコン
+      storage.ts           # chrome.storage ラッパー
+      constants.ts         # 定数・設定型定義
+      logger.ts            # デバッグログ
+    _locales/
+      ja/messages.json
+      en/messages.json
+    icons/                 # 拡張アイコン
   tests/
+    unit/                  # Vitest ユニットテスト (53テスト)
+  dist/                    # esbuild ビルド出力
+  esbuild.config.mjs       # ビルド設定
     unit/                # 単体テスト
     e2e/                 # Playwright E2E テスト
   docs/                  # 追加ドキュメント（必要時）
@@ -1048,13 +1064,13 @@ Notion の DOM 変更で拡張のセレクタが壊れた場合:
 
 **マイルストーン:**
 
-- [ ] M-01: プロジェクトセットアップ（ビルド、テスト、CI）
-- [ ] M-02: selectors.ts の作成と Notion DOM マッピング完了
-- [ ] M-03: F-01（サイドバー）実装・NVDA テスト完了
-- [ ] M-04: F-02（ブロックナビゲーション）実装・NVDA テスト完了
-- [ ] M-05: F-03（contenteditable）実装・NVDA テスト完了
-- [ ] M-06: F-05（ライブアナウンサー）実装・NVDA テスト完了
-- [ ] M-07: F-08（設定画面）実装・NVDA テスト完了
+- [x] M-01: プロジェクトセットアップ（ビルド、テスト、CI） ✅ esbuild + Vitest + TypeScript
+- [x] M-02: selectors.ts の作成と Notion DOM マッピング完了 ✅ 28+ ブロックタイプ対応
+- [x] M-03: F-01（サイドバー）実装 ✅ roving tabindex、矢印キー、タイプアヘッド検索
+- [x] M-04: F-02（ブロックナビゲーション）実装 ✅ Alt+Shift+N/P、見出しジャンプ(J/K/1/2/3)、先頭末尾(Home/End)
+- [ ] M-05: F-03（contenteditable）実装 — NVDA 仮想バッファ問題の調査中
+- [x] M-06: F-05（ライブアナウンサー）実装 ✅ polite/assertive リージョン
+- [ ] M-07: F-08（設定画面）実装 — 未着手
 - [ ] M-08: MVP 統合テスト完了
 - [ ] M-09: Chrome Web Store に限定公開（テスター向け）
 
@@ -1072,9 +1088,10 @@ Notion の DOM 変更で拡張のセレクタが壊れた場合:
 
 **マイルストーン:**
 
-- [ ] M-10: F-04（DB テーブル）実装・NVDA テスト完了
-- [ ] M-11: F-06（検索）実装・テスト完了
-- [ ] M-12: F-07（コメント）実装・テスト完了
+- [x] M-10: F-04（DB テーブル）基本実装 ✅ grid/row/cell ARIA、矢印キーナビ、仮想スクロール対応
+- [x] M-11: F-06（検索）基本実装 ✅ listbox/option ロール、Notion ハイライト同期、結果数読み上げ
+- [x] M-12: F-07（コメント）基本実装 ✅ article ロール、Alt+J/K ナビ、新規コメント通知
+- [x] M-10b: モーダル強化 ✅ フォーカストラップ、トースト読み上げ
 - [ ] M-13: JAWS テスト・差分対応
 - [ ] M-14: VoiceOver テスト・差分対応
 - [ ] M-15: Beta 版公開・フィードバック収集
@@ -1101,13 +1118,13 @@ Notion の DOM 変更で拡張のセレクタが壊れた場合:
 | # | 質問 | 影響する機能 | 調査方法 | ステータス |
 |---|---|---|---|---|
 | Q-01 | NVDA の仮想バッファ問題に対する最適なアプローチはどれか（6.2.3 の案A〜D） | F-03 | NVDA + Chrome で各案のプロトタイプを作成し検証。NVDA のフォーカスモード/ブラウズモード切替を実測 | 未着手 |
-| Q-02 | Notion は Shadow DOM を使用しているか | 全機能 | Chrome DevTools で全要素を調査。`document.querySelectorAll('*')` で Shadow Root の有無を確認 | 未着手 |
-| Q-03 | Notion の仮想スクロール実装の詳細（何行分の DOM を保持するか、スクロールイベントの発火タイミング） | F-04 | 大量行の DB で DOM 要素数を監視。IntersectionObserver のログを取得 | 未着手 |
+| Q-02 | Notion は Shadow DOM を使用しているか | 全機能 | Chrome DevTools で全要素を調査。`document.querySelectorAll('*')` で Shadow Root の有無を確認 | **確認済み: 不使用** |
+| Q-03 | Notion の仮想スクロール実装の詳細（何行分の DOM を保持するか、スクロールイベントの発火タイミング） | F-04 | 大量行の DB で DOM 要素数を監視。IntersectionObserver のログを取得 | **対応済み: MutationObserver で動的行を再強化** |
 | Q-04 | `aria-roledescription` の JAWS / VoiceOver でのサポート状況 | F-02, F-04 | 各 SR で `aria-roledescription` 付きの要素を読み上げテスト | 未着手 |
 | Q-05 | Notion がキーボードイベントを preventDefault しているキーの一覧 | F-01, F-02, F-04 | 全キーバインドを試行し、拡張のハンドラーに到達するか確認。Notion のキーボードショートカット一覧と照合 | 未着手 |
-| Q-06 | Notion の SPA 遷移時に DOM がどの程度再構築されるか（全面 or 差分） | 全機能 | MutationObserver で遷移時の mutations 数・範囲を計測 | 未着手 |
-| Q-07 | 検索ダイアログ（Ctrl+K）の DOM 構造の詳細 | F-06 | DevTools で実際のダイアログ DOM を調査 | 未着手 |
-| Q-08 | コメントパネルの DOM 構造の詳細 | F-07 | DevTools で実際のコメント DOM を調査 | 未着手 |
+| Q-06 | Notion の SPA 遷移時に DOM がどの程度再構築されるか（全面 or 差分） | 全機能 | MutationObserver で遷移時の mutations 数・範囲を計測 | **対応済み: URL ポーリング + 800ms 遅延 rescan** |
+| Q-07 | 検索ダイアログ（Ctrl+K）の DOM 構造の詳細 | F-06 | DevTools で実際のダイアログ DOM を調査 | **対応済み: role=dialog 検出 + listbox/option 注入** |
+| Q-08 | コメントパネルの DOM 構造の詳細 | F-07 | DevTools で実際のコメント DOM を調査 | **対応済み: side-peek 内の comment 検出** |
 | Q-09 | `Alt+Shift` プレフィックスが他の主要拡張やOS機能と競合しないか | 全機能 | Windows / macOS で `Alt+Shift` の既存割り当てを調査。特に IME 切替との競合 | 未着手 |
 | Q-10 | Notion のアップデート頻度と DOM 変更の傾向 | 保守計画 | Notion のリリースノートを過去 6 ヶ月分調査。DOM スナップショットの差分を追跡 | 未着手 |
 | Q-11 | Chrome Web Store の審査でアクセシビリティ拡張に特有の要件があるか | リリース | Chrome Web Store のポリシードキュメントを調査 | 未着手 |
@@ -1156,4 +1173,9 @@ Notion の DOM 変更で拡張のセレクタが壊れた場合:
 
 ---
 
-> **次のアクション:** Open Questions の Q-01 / Q-05 / Q-09 を優先調査し、MVP の実装方針を確定する。
+> **次のアクション:**
+> 1. Q-01: contenteditable の NVDA 仮想バッファ問題の調査・解決（MVP 最大のブロッカー）
+> 2. Q-05: Notion の preventDefault キー調査（ショートカット競合の確認）
+> 3. Q-09: Alt+Shift プレフィックスの IME 競合確認
+> 4. 設定画面（F-08）の実装
+> 5. NVDA での実機テスト（全機能の統合検証）
