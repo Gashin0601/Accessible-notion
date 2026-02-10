@@ -235,6 +235,10 @@ function startNavigationDetection(): void {
 }
 
 function handlePageChange(): void {
+  // Check if focus is currently in the sidebar (keyboard navigation case)
+  const activeEl = document.activeElement as HTMLElement | null;
+  const focusWasInSidebar = !!activeEl?.closest(SIDEBAR_NAV);
+
   // Announce loading state for screen readers
   announce('ページを読み込み中…');
 
@@ -263,6 +267,14 @@ function handlePageChange(): void {
     const title = titleEl?.textContent?.trim();
     if (title) {
       announce(`${title} を開きました`);
+    }
+
+    // Auto-focus main content when navigating from the sidebar
+    // This solves the keyboard navigation gap: after selecting a page
+    // in the sidebar with Enter, focus moves to the content area
+    if (focusWasInSidebar) {
+      // Additional delay to ensure page content is fully rendered
+      setTimeout(() => focusMainContent(), 300);
     }
   }, 800);
 }
