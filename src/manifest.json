@@ -28,6 +28,7 @@
     "https://www.notion.so/*",
     "https://*.notion.site/*"
   ],
+  "action": {},
   "background": {
     "service_worker": "background/service-worker.js"
   }

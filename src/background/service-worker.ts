@@ -88,6 +88,13 @@ chrome.webNavigation?.onCommitted?.addListener(
   { url: [{ hostEquals: 'www.notion.so' }, { hostSuffix: '.notion.site' }] },
 );
 
+// ─── Guide Page ──────────────────────────────────────────────
+// Open the guide page when the extension icon is clicked.
+
+chrome.action.onClicked.addListener(() => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('guide/guide.html') });
+});
+
 // ─── Dev Hot Reload ──────────────────────────────────────────
 // In dev mode, watch for build timestamp changes and auto-reload.
 // esbuild writes dist/reload.txt with Date.now() on each build.

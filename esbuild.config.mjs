@@ -22,6 +22,11 @@ function copyStaticFiles() {
     }
   }
 
+  // Copy guide page
+  const guideDir = join(distDir, 'guide');
+  if (!existsSync(guideDir)) mkdirSync(guideDir, { recursive: true });
+  copyFileSync('src/guide/guide.html', join(guideDir, 'guide.html'));
+
   // Copy _locales
   const srcLocales = 'src/_locales';
   if (existsSync(srcLocales)) {

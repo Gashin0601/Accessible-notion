@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Accessible Notion ガイド</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #191919;
+      --surface: #2f3437;
+      --surface-hover: #373c3f;
+      --accent: #2383e2;
+      --accent-hover: #1b6ec2;
+      --text: rgba(255, 255, 255, 0.87);
+      --text-dim: rgba(255, 255, 255, 0.55);
+      --border: rgba(255, 255, 255, 0.08);
+      --focus: #2383e2;
+      --radius: 8px;
+      --max-w: 880px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Skip link */
+    .skip-link {
+      position: absolute;
+      top: -100%;
+      left: 1rem;
+      background: var(--accent);
+      color: #fff;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0 0 var(--radius) var(--radius);
+      text-decoration: none;
+      font-weight: 600;
+      z-index: 100;
+      transition: top 0.2s;
+    }
+    .skip-link:focus {
+      top: 0;
+      outline: 3px solid #fff;
+      outline-offset: 2px;
+    }
+
+    /* Focus */
+    :focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+    }
+
+    /* Container */
+    .container {
+      max-width: var(--max-w);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    /* ─── Hero ─── */
+    .hero {
+      text-align: center;
+      padding: 5rem 1.5rem 4rem;
+      background: linear-gradient(180deg, #1e2a3a 0%, var(--bg) 100%);
+    }
+    .hero-title {
+      font-size: 2.75rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
+    }
+    .hero-accent { color: var(--accent); }
+    .hero-tagline {
+      font-size: 1.25rem;
+      color: var(--text-dim);
+      max-width: 540px;
+      margin: 0 auto 2rem;
+    }
+    .hero-badge {
+      display: inline-block;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 0.5rem 1.25rem;
+      border-radius: 2rem;
+      font-size: 0.875rem;
+      color: var(--text-dim);
+    }
+
+    /* ─── Sections ─── */
+    section { padding: 4rem 0; }
+    .section-title {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.01em;
+    }
+    .section-desc {
+      color: var(--text-dim);
+      margin-bottom: 2.5rem;
+      font-size: 1.05rem;
+    }
+
+    /* ─── Feature cards ─── */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 1.25rem;
+    }
+    .feature-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .feature-card:hover {
+      border-color: rgba(255, 255, 255, 0.16);
+      transform: translateY(-2px);
+    }
+    .feature-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 8px;
+      background: rgba(35, 131, 226, 0.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 1rem;
+      color: var(--accent);
+    }
+    .feature-name {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+    }
+    .feature-desc {
+      font-size: 0.9rem;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+
+    /* ─── Shortcut tables ─── */
+    .shortcut-group { margin-bottom: 2rem; }
+    .shortcut-group:last-child { margin-bottom: 0; }
+    .shortcut-group-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+      color: var(--accent);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--surface);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    thead th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      background: rgba(255, 255, 255, 0.04);
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
+    }
+    tbody td {
+      padding: 0.625rem 1rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.95rem;
+    }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+
+    kbd {
+      display: inline-block;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+      padding: 0.15em 0.5em;
+      font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', monospace;
+      font-size: 0.85em;
+      line-height: 1.4;
+      white-space: nowrap;
+      box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    /* ─── Steps ─── */
+    .steps {
+      list-style: none;
+      counter-reset: step;
+    }
+    .steps li {
+      counter-increment: step;
+      display: flex;
+      gap: 1rem;
+      align-items: flex-start;
+      padding: 1.25rem 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .steps li:last-child { border-bottom: none; }
+    .steps li::before {
+      content: counter(step);
+      flex-shrink: 0;
+      width: 2rem;
+      height: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(35, 131, 226, 0.15);
+      color: var(--accent);
+      border-radius: 50%;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+    .step-title {
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+    .step-desc {
+      color: var(--text-dim);
+      font-size: 0.95rem;
+    }
+
+    /* ─── Footer ─── */
+    footer {
+      text-align: center;
+      padding: 3rem 1.5rem;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--border);
+    }
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    footer a:hover { text-decoration: underline; }
+
+    /* ─── Responsive ─── */
+    @media (max-width: 600px) {
+      .hero { padding: 3.5rem 1rem 3rem; }
+      .hero-title { font-size: 2rem; }
+      .hero-tagline { font-size: 1.1rem; }
+      .section-title { font-size: 1.4rem; }
+      section { padding: 3rem 0; }
+      .features-grid { grid-template-columns: 1fr; }
+
+      table, thead, tbody, th, td, tr { display: block; }
+      thead { display: none; }
+      tbody td {
+        padding: 0.5rem 1rem;
+        border-bottom: none;
+      }
+      tbody td:first-child {
+        padding-top: 0.75rem;
+        font-weight: 600;
+      }
+      tbody td:last-child {
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid var(--border);
+      }
+      tbody tr:last-child td:last-child { border-bottom: none; }
+    }
+  </style>
+</head>
+<body>
+  <a href="#main" class="skip-link">メインコンテンツへスキップ</a>
+
+  <header class="hero" role="banner">
+    <div class="container">
+      <h1 class="hero-title">
+        <span class="hero-accent">Accessible</span> Notion
+      </h1>
+      <p class="hero-tagline">
+        Notion をスクリーンリーダーで使いやすくする Chrome 拡張機能
+      </p>
+      <span class="hero-badge">Chrome Extension &middot; Manifest V3</span>
+    </div>
+  </header>
+
+  <main id="main" class="container">
+
+    <!-- ── Features ── -->
+    <section aria-labelledby="features-heading">
+      <h2 id="features-heading" class="section-title">主な機能</h2>
+      <p class="section-desc">Notion のアクセシビリティを 6 つの領域で改善します</p>
+
+      <div class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><circle cx="7" cy="7" r="1"/></svg>
+          </div>
+          <h3 class="feature-name">ARIA 自動注入</h3>
+          <p class="feature-desc">29 種類のブロックに role・aria-label・見出しレベルを自動付与。DOMLock を回避して属性を保持します。</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+          </div>
+          <h3 class="feature-name">サイドバーツリー</h3>
+          <p class="feature-desc">WAI-ARIA Tree View パターンで矢印キー・Home/End・文字ジャンプによるページツリー操作が可能。</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01"/><path d="M6 12h12M6 16h8"/></svg>
+          </div>
+          <h3 class="feature-name">ブロックナビゲーション</h3>
+          <p class="feature-desc">ショートカットキーでブロック間・見出し間を素早く移動。ブロックの種類とコンテンツを読み上げます。</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          </div>
+          <h3 class="feature-name">データベース対応</h3>
+          <p class="feature-desc">テーブル・ボード・リスト・ギャラリー・カレンダー・タイムラインの各ビューでグリッドナビゲーション対応。</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          </div>
+          <h3 class="feature-name">検索・モーダル</h3>
+          <p class="feature-desc">検索結果のリストボックス化と結果件数の読み上げ。モーダルのフォーカストラップとトースト通知対応。</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          </div>
+          <h3 class="feature-name">コメント</h3>
+          <p class="feature-desc">コメントパネルのキーボードナビゲーション（Alt+J/K）と新規コメント通知に対応。</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Keyboard Shortcuts ── -->
+    <section aria-labelledby="shortcuts-heading">
+      <h2 id="shortcuts-heading" class="section-title">キーボードショートカット</h2>
+      <p class="section-desc">すべてのショートカットは <kbd>Alt</kbd>+<kbd>Shift</kbd> をプレフィックスとして使用します</p>
+
+      <div class="shortcut-group">
+        <h3 class="shortcut-group-title">ランドマーク移動</h3>
+        <table>
+          <thead><tr><th scope="col">キー</th><th scope="col">機能</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>Alt+Shift+S</kbd></td><td>サイドバーにフォーカス</td></tr>
+            <tr><td><kbd>Alt+Shift+M</kbd></td><td>メインコンテンツにフォーカス</td></tr>
+            <tr><td><kbd>Alt+Shift+H</kbd></td><td>ヘッダーにフォーカス</td></tr>
+            <tr><td><kbd>Alt+Shift+L</kbd></td><td>ランドマーク一覧を読み上げ</td></tr>
+            <tr><td><kbd>Alt+Shift+/</kbd></td><td>ショートカットヘルプを表示</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="shortcut-group">
+        <h3 class="shortcut-group-title">ブロック操作</h3>
+        <table>
+          <thead><tr><th scope="col">キー</th><th scope="col">機能</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>Alt+Shift+N</kbd></td><td>次のブロックへ移動</td></tr>
+            <tr><td><kbd>Alt+Shift+P</kbd></td><td>前のブロックへ移動</td></tr>
+            <tr><td><kbd>Alt+Shift+B</kbd></td><td>現在のブロックを読み上げ</td></tr>
+            <tr><td><kbd>Alt+Shift+T</kbd></td><td>見出しアウトラインを読み上げ</td></tr>
+            <tr><td><kbd>Alt+Shift+Home</kbd></td><td>最初のブロックへ移動</td></tr>
+            <tr><td><kbd>Alt+Shift+End</kbd></td><td>最後のブロックへ移動</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="shortcut-group">
+        <h3 class="shortcut-group-title">見出しジャンプ</h3>
+        <table>
+          <thead><tr><th scope="col">キー</th><th scope="col">機能</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>Alt+Shift+J</kbd></td><td>次の見出しへジャンプ</td></tr>
+            <tr><td><kbd>Alt+Shift+K</kbd></td><td>前の見出しへジャンプ</td></tr>
+            <tr><td><kbd>Alt+Shift+1</kbd></td><td>次の H1 へジャンプ</td></tr>
+            <tr><td><kbd>Alt+Shift+2</kbd></td><td>次の H2 へジャンプ</td></tr>
+            <tr><td><kbd>Alt+Shift+3</kbd></td><td>次の H3 へジャンプ</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="shortcut-group">
+        <h3 class="shortcut-group-title">ユーティリティ</h3>
+        <table>
+          <thead><tr><th scope="col">キー</th><th scope="col">機能</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>Alt+Shift+D</kbd></td><td>データベースグリッドモードに入る</td></tr>
+            <tr><td><kbd>Alt+Shift+A</kbd></td><td>ブロックアクションメニューを開く</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ── How to use ── -->
+    <section aria-labelledby="howto-heading">
+      <h2 id="howto-heading" class="section-title">使い方</h2>
+      <p class="section-desc">拡張機能をインストールしたら、Notion を開くだけで自動的に有効化されます</p>
+
+      <ol class="steps">
+        <li>
+          <div>
+            <p class="step-title">Notion を開く</p>
+            <p class="step-desc">notion.so にアクセスすると、拡張機能が自動的にページを解析し ARIA 属性を注入します。</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <p class="step-title">ランドマークで移動する</p>
+            <p class="step-desc"><kbd>Alt+Shift+S</kbd>（サイドバー）、<kbd>Alt+Shift+M</kbd>（メイン）、<kbd>Alt+Shift+H</kbd>（ヘッダー）でページ内の主要領域にジャンプできます。</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <p class="step-title">ブロック間を移動する</p>
+            <p class="step-desc"><kbd>Alt+Shift+N</kbd> / <kbd>Alt+Shift+P</kbd> でブロックを前後に移動。<kbd>Alt+Shift+J</kbd> / <kbd>Alt+Shift+K</kbd> で見出しへジャンプ。</p>
+          </div>
+        </li>
+        <li>
+          <div>
+            <p class="step-title">ヘルプを確認する</p>
+            <p class="step-desc">操作に迷ったら <kbd>Alt+Shift+/</kbd> で全ショートカット一覧をスクリーンリーダーで読み上げます。</p>
+          </div>
+        </li>
+      </ol>
+    </section>
+
+  </main>
+
+  <footer role="contentinfo">
+    <div class="container">
+      <p>Accessible Notion v0.1.0</p>
+      <p style="margin-top: 0.5rem;">
+        <a href="https://github.com/Gashin0601/Accessible-notion" target="_blank" rel="noopener noreferrer">GitHub</a>
+      </p>
+    </div>
+  </footer>
+</body>
+</html>
