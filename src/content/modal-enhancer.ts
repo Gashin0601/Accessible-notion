@@ -125,6 +125,19 @@ function detectDialogType(dialog: HTMLElement): string {
   if (text.includes('プロパティ') || text.includes('Properties') || text.includes('Property type')) {
     return 'properties';
   }
+  // Move-to dialog (Cmd+Shift+P)
+  const moveInput = dialog.querySelector<HTMLInputElement>('input[placeholder*="移動先"], input[placeholder*="Move to"]');
+  if (moveInput) {
+    return 'move-to';
+  }
+  // Icon/emoji picker dialog (has tablist with 絵文字/アイコン/アップロード tabs)
+  const tablist = dialog.querySelector('[role="tablist"]');
+  if (tablist) {
+    const tabText = tablist.textContent ?? '';
+    if ((tabText.includes('絵文字') || tabText.includes('Emoji')) && (tabText.includes('アイコン') || tabText.includes('Icon'))) {
+      return 'icon-picker';
+    }
+  }
 
   return 'generic';
 }
@@ -141,6 +154,8 @@ function getDialogLabel(type: string): string {
     case 'template': return 'テンプレート';
     case 'date-picker': return '日付選択';
     case 'properties': return 'プロパティ設定';
+    case 'move-to': return '移動先を選択';
+    case 'icon-picker': return 'アイコン選択';
     default: return '';
   }
 }
@@ -162,6 +177,12 @@ function enhanceDialogByType(dialog: HTMLElement, type: string): void {
       break;
     case 'date-picker':
       enhanceDatePicker(dialog);
+      break;
+    case 'move-to':
+      enhanceMoveToDialog(dialog);
+      break;
+    case 'icon-picker':
+      enhanceIconPickerDialog(dialog);
       break;
   }
   // Generic: label any unlabeled switches inside dialogs
@@ -465,6 +486,54 @@ function enhanceDatePicker(dialog: HTMLElement): void {
   // Switches are handled by enhanceSwitchesInContainer (called from enhanceDialogByType)
 
   logDebug(MODULE, 'Enhanced date picker dialog');
+}
+
+function enhanceMoveToDialog(dialog: HTMLElement): void {
+  dialog.setAttribute('aria-label', '移動先を選択');
+
+  // Label the search input
+  const input = dialog.querySelector<HTMLInputElement>('input');
+  if (input && !input.getAttribute('aria-label')) {
+    input.setAttribute('aria-label', input.getAttribute('placeholder') ?? '移動先を検索');
+  }
+
+  // Label section headers ("おすすめ", "チームスペース") as headings
+  const sectionLabels = ['おすすめ', 'チームスペース', 'Suggested', 'Teamspaces'];
+  const allEls = dialog.querySelectorAll<HTMLElement>('*');
+  for (const el of allEls) {
+    const text = el.textContent?.trim();
+    if (!text || el.children.length > 0) continue;
+    if (!sectionLabels.includes(text)) continue;
+    if (!el.getAttribute('role')) {
+      el.setAttribute('role', 'heading');
+      el.setAttribute('aria-level', '2');
+    }
+  }
+
+  // Label the page list area as a tree/list
+  const scroller = dialog.querySelector<HTMLElement>('.notion-scroller');
+  if (scroller && !scroller.getAttribute('role')) {
+    scroller.setAttribute('role', 'tree');
+    scroller.setAttribute('aria-label', '移動先のページ一覧');
+  }
+
+  logDebug(MODULE, 'Enhanced move-to dialog');
+}
+
+function enhanceIconPickerDialog(dialog: HTMLElement): void {
+  // Label tablist
+  const tablist = dialog.querySelector<HTMLElement>('[role="tablist"]');
+  if (tablist && !tablist.getAttribute('aria-label')) {
+    tablist.setAttribute('aria-label', 'アイコンタイプ');
+  }
+
+  // Label search input
+  const input = dialog.querySelector<HTMLInputElement>('input');
+  if (input && !input.getAttribute('aria-label')) {
+    input.setAttribute('aria-label', input.getAttribute('placeholder') ?? 'アイコンを検索');
+  }
+
+  logDebug(MODULE, 'Enhanced icon picker dialog');
 }
 
 /**
