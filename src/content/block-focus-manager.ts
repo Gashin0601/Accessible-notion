@@ -1,13 +1,17 @@
 /**
- * Block Focus Manager
+ * Block Focus Manager — Virtual Cursor
  *
- * Two-mode navigation system for Notion blocks:
- * - Navigate mode: focus is on a block container, arrow keys move between blocks
- * - Edit mode: focus is inside a contenteditable, normal editing
+ * Two-mode navigation for Notion blocks:
+ * - Navigate mode: virtual cursor highlights blocks, ↑/↓ move between them
+ * - Edit mode: all keys pass through to Notion for normal editing
  *
- * Enter switches Navigate → Edit, Escape switches Edit → Navigate.
- * Arrow ↑/↓ in Navigate mode moves between blocks with aria-live announcements.
- * Inspired by Google Docs / WAI-ARIA Feed pattern.
+ * Enter switches Navigate → Edit (places caret in block).
+ * Escape switches Edit → Navigate (highlights current block).
+ *
+ * Uses CSS-class highlighting instead of DOM focus to preserve
+ * Notion's contenteditable editing system.  Block containers are
+ * children of a single whenContentEditable wrapper — moving DOM
+ * focus to them breaks text input.
  */
 
 import { logDebug } from '../shared/logger';
@@ -22,10 +26,11 @@ import {
 import { announce } from './live-announcer';
 
 const MODULE = 'BlockFocusManager';
+const NAV_HIGHLIGHT_CLASS = 'accessible-notion-nav-focus';
 
 let currentBlockIndex = -1;
+let navigateMode = false;
 let keydownHandler: ((e: KeyboardEvent) => void) | null = null;
-let focusinHandler: ((e: FocusEvent) => void) | null = null;
 let styleElement: HTMLStyleElement | null = null;
 
 // ─── Block Utilities ─────────────────────────────────────────
@@ -69,148 +74,69 @@ function hasOpenPopupOrDialog(): boolean {
   );
 }
 
-// ─── Core Navigation ─────────────────────────────────────────
+// ─── Highlight Management ─────────────────────────────────────
 
-function focusBlock(index: number): void {
+function removeHighlight(): void {
+  const prev = document.querySelector(`.${NAV_HIGHLIGHT_CLASS}`);
+  prev?.classList.remove(NAV_HIGHLIGHT_CLASS);
+}
+
+function moveHighlight(index: number): void {
   const blocks = getAllBlocks();
   if (blocks.length === 0) return;
 
   if (index < 0) index = 0;
   if (index >= blocks.length) index = blocks.length - 1;
 
-  // Remove tabindex from previous block (roving tabindex)
-  if (currentBlockIndex >= 0 && currentBlockIndex < blocks.length) {
-    blocks[currentBlockIndex].setAttribute('tabindex', '-1');
-  }
+  removeHighlight();
 
   const block = blocks[index];
   currentBlockIndex = index;
-  block.setAttribute('tabindex', '0');
-  block.focus();
+  block.classList.add(NAV_HIGHLIGHT_CLASS);
   block.scrollIntoView?.({ block: 'nearest', behavior: 'smooth' });
-
-  const msg = buildAnnouncement(block, index, blocks.length);
-  announce(msg);
-  logDebug(MODULE, `Focused block ${index}: ${block.className}`);
+  logDebug(MODULE, `Highlighted block ${index}`);
 }
 
-// ─── Mode Transitions ────────────────────────────────────────
-
-function enterEditMode(): void {
+function announceBlock(prefix?: string): void {
   const blocks = getAllBlocks();
   if (currentBlockIndex < 0 || currentBlockIndex >= blocks.length) return;
-
-  const block = blocks[currentBlockIndex];
-  const editable = block.querySelector<HTMLElement>(TEXTBOX);
-
-  if (editable) {
-    // Notion's ContentEditableVoid blocks programmatic focus() calls.
-    // Use Selection API to place a cursor inside the contenteditable,
-    // then click the block to let Notion's native editing activate.
-    const sel = window.getSelection();
-    const range = document.createRange();
-
-    // Find a text node to place cursor at end, or collapse into container
-    const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
-    let lastText: Text | null = null;
-    let node: Text | null;
-    while ((node = walker.nextNode() as Text | null)) {
-      lastText = node;
-    }
-
-    if (lastText) {
-      range.setStart(lastText, lastText.length);
-    } else {
-      range.selectNodeContents(editable);
-    }
-    range.collapse(false);
-
-    sel?.removeAllRanges();
-    sel?.addRange(range);
-
-    // Remove tabindex so the block no longer traps focus in Navigate mode
-    block.removeAttribute('tabindex');
-
-    // Simulate a click at the editable's position to activate Notion editing
-    const rect = editable.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      const clickEvent = new PointerEvent('pointerdown', {
-        bubbles: true,
-        cancelable: true,
-        clientX: rect.left + 5,
-        clientY: rect.top + rect.height / 2,
-        pointerId: 1,
-        pointerType: 'mouse',
-      });
-      editable.dispatchEvent(clickEvent);
-    }
-
-    announce('編集モード');
-    logDebug(MODULE, 'Entered edit mode');
-  } else {
-    // Non-editable blocks: try to activate
-    const link = block.querySelector<HTMLElement>('a[href]');
-    if (link) {
-      link.click();
-    } else {
-      const toggle = block.querySelector<HTMLElement>('[role="button"]');
-      if (toggle) {
-        toggle.click();
-      } else {
-        announce('このブロックは編集できません');
-      }
-    }
-  }
+  const msg = buildAnnouncement(blocks[currentBlockIndex], currentBlockIndex, blocks.length);
+  announce(prefix ? `${prefix} ${msg}` : msg);
 }
 
-function exitEditToNavigate(): void {
-  const active = document.activeElement as HTMLElement | null;
-  if (!active) return;
-
-  const block = active.closest(BLOCK_SELECTABLE) as HTMLElement | null;
-  if (!block) return;
-
-  const blocks = getAllBlocks();
-  const idx = blocks.indexOf(block);
-  if (idx >= 0) {
-    currentBlockIndex = idx;
-  }
-
-  block.setAttribute('tabindex', '0');
-
-  // Clear Notion's editing state before re-focusing the block container
-  window.getSelection()?.removeAllRanges();
-  (document.activeElement as HTMLElement | null)?.blur();
-
-  block.focus();
-
-  const msg = buildAnnouncement(block, currentBlockIndex, blocks.length);
-  announce(`ナビゲートモード. ${msg}`);
-  logDebug(MODULE, 'Returned to navigate mode');
-}
-
-// ─── Event Handlers ──────────────────────────────────────────
+// ─── Event Handler ───────────────────────────────────────────
 
 function handleKeydown(e: KeyboardEvent): void {
   // Skip modifier combos — keyboard-handler manages Alt+Shift shortcuts
   if (e.altKey || e.ctrlKey || e.metaKey) return;
 
-  const active = document.activeElement as HTMLElement | null;
-  if (!active) return;
+  // ── Navigate mode: virtual cursor is active ──
+  if (navigateMode) {
+    // Only intercept when focus is within main frame (or on body/document)
+    const active = document.activeElement as HTMLElement | null;
+    const main = document.querySelector(MAIN_FRAME);
+    if (active && main && !main.contains(active)
+        && active !== document.body && active !== document.documentElement) {
+      return;
+    }
 
-  // ── Navigate mode: focus is on a block container ──
-  if (active.matches(BLOCK_SELECTABLE)) {
     // Let Shift+arrow pass through for Notion's multi-block selection
     if (e.shiftKey) return;
 
     const blocks = getAllBlocks();
+    if (blocks.length === 0) {
+      navigateMode = false;
+      removeHighlight();
+      return;
+    }
 
     switch (e.key) {
       case 'ArrowDown': {
         e.preventDefault();
         e.stopPropagation();
         if (currentBlockIndex < blocks.length - 1) {
-          focusBlock(currentBlockIndex + 1);
+          moveHighlight(currentBlockIndex + 1);
+          announceBlock();
         } else {
           announce('最後のブロックです');
         }
@@ -220,48 +146,69 @@ function handleKeydown(e: KeyboardEvent): void {
         e.preventDefault();
         e.stopPropagation();
         if (currentBlockIndex > 0) {
-          focusBlock(currentBlockIndex - 1);
+          moveHighlight(currentBlockIndex - 1);
+          announceBlock();
         } else {
           announce('最初のブロックです');
         }
         return;
       }
       case 'Enter': {
-        // Let Enter pass through to Notion — it creates a new block or
-        // enters editing mode.  Notion's ContentEditableVoid prevents
-        // programmatic focus, so we rely on the native Enter behaviour.
-        // The user then types normally; Escape returns to Navigate mode.
+        // Place caret in the highlighted block's textbox
+        if (currentBlockIndex >= 0 && currentBlockIndex < blocks.length) {
+          const block = blocks[currentBlockIndex];
+          const editable = block.querySelector<HTMLElement>(TEXTBOX);
+          if (editable) {
+            const sel = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(editable);
+            range.collapse(false);
+            sel?.removeAllRanges();
+            sel?.addRange(range);
+          }
+        }
+        navigateMode = false;
+        removeHighlight();
+        // Don't preventDefault — let Notion handle Enter
         announce('編集モード');
+        logDebug(MODULE, 'Exited navigate mode (Enter)');
+        return;
+      }
+      case 'Escape': {
+        if (!hasOpenPopupOrDialog()) {
+          e.preventDefault();
+          e.stopPropagation();
+          navigateMode = false;
+          removeHighlight();
+          announce('ナビゲートモード終了');
+          logDebug(MODULE, 'Exited navigate mode (Escape)');
+        }
         return;
       }
     }
     return;
   }
 
-  // ── Edit mode: Escape from contenteditable returns to block ──
+  // ── Not in Navigate mode: Escape from contenteditable → Navigate ──
   if (e.key === 'Escape' && !e.shiftKey) {
+    const active = document.activeElement as HTMLElement | null;
+    if (!active) return;
+
     const editable = active.closest('[contenteditable="true"]');
     if (editable) {
-      const block = active.closest(BLOCK_SELECTABLE);
+      const block = active.closest(BLOCK_SELECTABLE) as HTMLElement | null;
       if (block && !hasOpenPopupOrDialog()) {
-        e.preventDefault();
-        e.stopPropagation();
-        exitEditToNavigate();
+        const blocks = getAllBlocks();
+        const idx = blocks.indexOf(block);
+        if (idx >= 0) {
+          e.preventDefault();
+          e.stopPropagation();
+          navigateMode = true;
+          moveHighlight(idx);
+          announceBlock('ナビゲートモード.');
+          logDebug(MODULE, 'Entered navigate mode (Escape)');
+        }
       }
-    }
-  }
-}
-
-function handleFocusin(e: FocusEvent): void {
-  const target = e.target as HTMLElement | null;
-  if (!target) return;
-
-  // Track which block is focused for index management
-  if (target.matches(BLOCK_SELECTABLE)) {
-    const blocks = getAllBlocks();
-    const idx = blocks.indexOf(target);
-    if (idx >= 0) {
-      currentBlockIndex = idx;
     }
   }
 }
@@ -269,7 +216,7 @@ function handleFocusin(e: FocusEvent): void {
 // ─── Public Navigation API ───────────────────────────────────
 
 /**
- * Enter Navigate mode, focusing a specific block (or first/current).
+ * Enter Navigate mode, highlighting a specific block (or first/current).
  */
 export function enterNavigateMode(blockIndex?: number): void {
   const blocks = getAllBlocks();
@@ -279,7 +226,9 @@ export function enterNavigateMode(blockIndex?: number): void {
   }
 
   const idx = blockIndex ?? (currentBlockIndex >= 0 ? currentBlockIndex : 0);
-  focusBlock(Math.min(Math.max(0, idx), blocks.length - 1));
+  navigateMode = true;
+  moveHighlight(Math.min(Math.max(0, idx), blocks.length - 1));
+  announceBlock('ナビゲートモード.');
   logDebug(MODULE, 'Entered navigate mode');
 }
 
@@ -287,13 +236,14 @@ export function navigateNext(): void {
   const blocks = getAllBlocks();
   if (blocks.length === 0) return;
 
-  if (currentBlockIndex < 0) {
+  if (!navigateMode || currentBlockIndex < 0) {
     enterNavigateMode(0);
     return;
   }
 
   if (currentBlockIndex < blocks.length - 1) {
-    focusBlock(currentBlockIndex + 1);
+    moveHighlight(currentBlockIndex + 1);
+    announceBlock();
   } else {
     announce('最後のブロックです');
   }
@@ -303,13 +253,14 @@ export function navigatePrev(): void {
   const blocks = getAllBlocks();
   if (blocks.length === 0) return;
 
-  if (currentBlockIndex < 0) {
+  if (!navigateMode || currentBlockIndex < 0) {
     enterNavigateMode(0);
     return;
   }
 
   if (currentBlockIndex > 0) {
-    focusBlock(currentBlockIndex - 1);
+    moveHighlight(currentBlockIndex - 1);
+    announceBlock();
   } else {
     announce('最初のブロックです');
   }
@@ -329,11 +280,14 @@ export function navigateToNextHeading(): void {
   const blocks = getAllBlocks();
   if (blocks.length === 0) return;
 
+  if (!navigateMode) navigateMode = true;
+
   const start = currentBlockIndex < 0 ? 0 : currentBlockIndex + 1;
   for (let i = start; i < blocks.length; i++) {
     const type = detectBlockType(blocks[i]);
     if (type === 'header-block' || type === 'sub_header-block' || type === 'sub_sub_header-block') {
-      focusBlock(i);
+      moveHighlight(i);
+      announceBlock();
       return;
     }
   }
@@ -344,11 +298,14 @@ export function navigateToPrevHeading(): void {
   const blocks = getAllBlocks();
   if (blocks.length === 0) return;
 
+  if (!navigateMode) navigateMode = true;
+
   const start = currentBlockIndex <= 0 ? blocks.length - 1 : currentBlockIndex - 1;
   for (let i = start; i >= 0; i--) {
     const type = detectBlockType(blocks[i]);
     if (type === 'header-block' || type === 'sub_header-block' || type === 'sub_sub_header-block') {
-      focusBlock(i);
+      moveHighlight(i);
+      announceBlock();
       return;
     }
   }
@@ -359,6 +316,8 @@ export function navigateToNextHeadingLevel(level: number): void {
   const blocks = getAllBlocks();
   if (blocks.length === 0) return;
 
+  if (!navigateMode) navigateMode = true;
+
   const targetType = level === 1 ? 'header-block'
     : level === 2 ? 'sub_header-block'
     : 'sub_sub_header-block';
@@ -366,7 +325,8 @@ export function navigateToNextHeadingLevel(level: number): void {
   const start = currentBlockIndex < 0 ? 0 : currentBlockIndex + 1;
   for (let i = start; i < blocks.length; i++) {
     if (detectBlockType(blocks[i]) === targetType) {
-      focusBlock(i);
+      moveHighlight(i);
+      announceBlock();
       return;
     }
   }
@@ -380,7 +340,7 @@ function injectFocusStyles(): void {
   styleElement = document.createElement('style');
   styleElement.setAttribute('data-accessible-notion', 'focus-styles');
   styleElement.textContent = `
-    .notion-selectable[data-block-id]:focus {
+    .${NAV_HIGHLIGHT_CLASS} {
       outline: 2px solid #2383e2 !important;
       outline-offset: 1px;
       border-radius: 3px;
@@ -393,9 +353,7 @@ function injectFocusStyles(): void {
 
 export function initBlockFocusManager(): void {
   keydownHandler = handleKeydown;
-  focusinHandler = handleFocusin;
   document.addEventListener('keydown', keydownHandler, true);
-  document.addEventListener('focusin', focusinHandler, true);
   injectFocusStyles();
   logDebug(MODULE, 'Block focus manager initialized');
 }
@@ -405,21 +363,25 @@ export function destroyBlockFocusManager(): void {
     document.removeEventListener('keydown', keydownHandler, true);
     keydownHandler = null;
   }
-  if (focusinHandler) {
-    document.removeEventListener('focusin', focusinHandler, true);
-    focusinHandler = null;
-  }
+  removeHighlight();
   styleElement?.remove();
   styleElement = null;
+  navigateMode = false;
   currentBlockIndex = -1;
   logDebug(MODULE, 'Block focus manager destroyed');
 }
 
 export function resetBlockFocusManager(): void {
+  navigateMode = false;
+  removeHighlight();
   currentBlockIndex = -1;
 }
 
 // For testing
 export function getCurrentIndex(): number {
   return currentBlockIndex;
+}
+
+export function isNavigateMode(): boolean {
+  return navigateMode;
 }

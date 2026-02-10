@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { initKeyboardHandler, updateShortcuts, destroyKeyboardHandler } from '../../src/content/keyboard-handler';
 import { initLiveAnnouncer, destroyLiveAnnouncer } from '../../src/content/live-announcer';
+import { initBlockFocusManager, destroyBlockFocusManager, isNavigateMode } from '../../src/content/block-focus-manager';
 import { DEFAULT_SETTINGS, type ExtensionSettings } from '../../src/shared/constants';
 
 function createLandmarks(): void {
@@ -65,11 +66,13 @@ describe('keyboard-handler', () => {
     document.body.innerHTML = '';
     initLiveAnnouncer();
     createLandmarks();
+    initBlockFocusManager();
     settings = { ...DEFAULT_SETTINGS };
   });
 
   afterEach(() => {
     destroyKeyboardHandler();
+    destroyBlockFocusManager();
     destroyLiveAnnouncer();
   });
 
@@ -106,10 +109,11 @@ describe('keyboard-handler', () => {
       expect(document.activeElement).toBe(treeItem);
     });
 
-    it('Alt+Shift+M focuses main content', () => {
+    it('Alt+Shift+M activates navigate mode on main content', () => {
       fireKeyCombo('M');
       const block = document.querySelector('.notion-selectable[data-block-id]');
-      expect(document.activeElement).toBe(block);
+      expect(block?.classList.contains('accessible-notion-nav-focus')).toBe(true);
+      expect(isNavigateMode()).toBe(true);
     });
 
     it('Alt+Shift+H focuses header', () => {
@@ -236,7 +240,8 @@ describe('keyboard-handler', () => {
     it('⌥+Shift+M matches via event.code on Mac (composed char "Â")', () => {
       fireMacOptionShift('Â', 'KeyM');
       const block = document.querySelector('.notion-selectable[data-block-id]');
-      expect(document.activeElement).toBe(block);
+      expect(block?.classList.contains('accessible-notion-nav-focus')).toBe(true);
+      expect(isNavigateMode()).toBe(true);
     });
 
     it('⌥+Shift+H matches via event.code on Mac (composed char "Ó")', () => {

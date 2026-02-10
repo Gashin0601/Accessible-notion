@@ -12,8 +12,11 @@ import {
   navigateToNextHeadingLevel,
   resetBlockFocusManager,
   getCurrentIndex,
+  isNavigateMode,
 } from '../../src/content/block-focus-manager';
 import { initLiveAnnouncer, destroyLiveAnnouncer } from '../../src/content/live-announcer';
+
+const NAV_CLASS = 'accessible-notion-nav-focus';
 
 /**
  * Create a test DOM with 5 blocks:
@@ -99,7 +102,11 @@ function getBlock(id: string): HTMLElement {
   return document.querySelector(`[data-block-id="${id}"]`) as HTMLElement;
 }
 
-describe('block-focus-manager', () => {
+function getHighlighted(): HTMLElement | null {
+  return document.querySelector(`.${NAV_CLASS}`);
+}
+
+describe('block-focus-manager (virtual cursor)', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
     initLiveAnnouncer();
@@ -115,32 +122,34 @@ describe('block-focus-manager', () => {
   // ─── enterNavigateMode ─────────────────────────────────────
 
   describe('enterNavigateMode', () => {
-    it('focuses the first block by default', () => {
+    it('highlights the first block by default', () => {
       enterNavigateMode();
-      expect(document.activeElement).toBe(getBlock('block-0'));
+      expect(getHighlighted()).toBe(getBlock('block-0'));
       expect(getCurrentIndex()).toBe(0);
+      expect(isNavigateMode()).toBe(true);
     });
 
-    it('focuses a specific block by index', () => {
+    it('highlights a specific block by index', () => {
       enterNavigateMode(2);
-      expect(document.activeElement).toBe(getBlock('block-2'));
+      expect(getHighlighted()).toBe(getBlock('block-2'));
       expect(getCurrentIndex()).toBe(2);
     });
 
-    it('sets tabindex="0" on the focused block', () => {
+    it('activates navigate mode', () => {
+      expect(isNavigateMode()).toBe(false);
       enterNavigateMode();
-      expect(getBlock('block-0').getAttribute('tabindex')).toBe('0');
+      expect(isNavigateMode()).toBe(true);
     });
 
     it('clamps to last block if index too high', () => {
       enterNavigateMode(100);
-      expect(document.activeElement).toBe(getBlock('block-4'));
+      expect(getHighlighted()).toBe(getBlock('block-4'));
       expect(getCurrentIndex()).toBe(4);
     });
 
     it('clamps to first block if index negative', () => {
       enterNavigateMode(-5);
-      expect(document.activeElement).toBe(getBlock('block-0'));
+      expect(getHighlighted()).toBe(getBlock('block-0'));
       expect(getCurrentIndex()).toBe(0);
     });
 
@@ -162,7 +171,6 @@ describe('block-focus-manager', () => {
     });
 
     it('announces when no blocks found', async () => {
-      // Remove main frame — need to destroy+reinit live announcer since innerHTML clears it
       destroyLiveAnnouncer();
       document.body.innerHTML = '';
       initLiveAnnouncer();
@@ -176,17 +184,17 @@ describe('block-focus-manager', () => {
   // ─── Arrow key navigation ──────────────────────────────────
 
   describe('arrow key navigation', () => {
-    it('ArrowDown moves to next block', () => {
+    it('ArrowDown moves highlight to next block', () => {
       enterNavigateMode(0);
       fireKey('ArrowDown');
-      expect(document.activeElement).toBe(getBlock('block-1'));
+      expect(getHighlighted()).toBe(getBlock('block-1'));
       expect(getCurrentIndex()).toBe(1);
     });
 
-    it('ArrowUp moves to previous block', () => {
+    it('ArrowUp moves highlight to previous block', () => {
       enterNavigateMode(2);
       fireKey('ArrowUp');
-      expect(document.activeElement).toBe(getBlock('block-1'));
+      expect(getHighlighted()).toBe(getBlock('block-1'));
       expect(getCurrentIndex()).toBe(1);
     });
 
@@ -195,7 +203,7 @@ describe('block-focus-manager', () => {
       fireKey('ArrowDown');
       fireKey('ArrowDown');
       fireKey('ArrowDown');
-      expect(document.activeElement).toBe(getBlock('block-3'));
+      expect(getHighlighted()).toBe(getBlock('block-3'));
       expect(getCurrentIndex()).toBe(3);
     });
 
@@ -215,13 +223,12 @@ describe('block-focus-manager', () => {
       expect(live?.textContent).toContain('最初のブロック');
     });
 
-    it('ArrowDown sets tabindex correctly (roving)', () => {
+    it('only one block has highlight class at a time', () => {
       enterNavigateMode(0);
-      expect(getBlock('block-0').getAttribute('tabindex')).toBe('0');
-
       fireKey('ArrowDown');
-      expect(getBlock('block-0').getAttribute('tabindex')).toBe('-1');
-      expect(getBlock('block-1').getAttribute('tabindex')).toBe('0');
+      const highlighted = document.querySelectorAll(`.${NAV_CLASS}`);
+      expect(highlighted.length).toBe(1);
+      expect(highlighted[0]).toBe(getBlock('block-1'));
     });
 
     it('preventDefault is called on ArrowDown', () => {
@@ -236,8 +243,7 @@ describe('block-focus-manager', () => {
       expect(event.defaultPrevented).toBe(true);
     });
 
-    it('ignores ArrowDown when focus is not on a block', () => {
-      // Focus is not on any block
+    it('ignores ArrowDown when not in navigate mode', () => {
       const event = fireKey('ArrowDown');
       expect(event.defaultPrevented).toBe(false);
     });
@@ -246,6 +252,20 @@ describe('block-focus-manager', () => {
   // ─── Enter / Escape mode switching ─────────────────────────
 
   describe('Enter / Escape mode switching', () => {
+    it('Enter deactivates navigate mode', () => {
+      enterNavigateMode(0);
+      expect(isNavigateMode()).toBe(true);
+      fireKey('Enter');
+      expect(isNavigateMode()).toBe(false);
+    });
+
+    it('Enter removes highlight', () => {
+      enterNavigateMode(0);
+      expect(getHighlighted()).not.toBeNull();
+      fireKey('Enter');
+      expect(getHighlighted()).toBeNull();
+    });
+
     it('Enter announces edit mode', async () => {
       enterNavigateMode(0);
       fireKey('Enter');
@@ -260,20 +280,17 @@ describe('block-focus-manager', () => {
       expect(event.defaultPrevented).toBe(false);
     });
 
-    it('Escape from contenteditable returns to block container', () => {
-      enterNavigateMode(0);
-      // Simulate being in edit mode (Notion moves focus to contenteditable)
+    it('Escape from contenteditable activates navigate mode', () => {
       const editable = getBlock('block-0').querySelector('[contenteditable="true"]') as HTMLElement;
       editable.focus();
+      expect(isNavigateMode()).toBe(false);
 
-      // Press Escape
       fireKey('Escape');
-      expect(document.activeElement).toBe(getBlock('block-0'));
+      expect(isNavigateMode()).toBe(true);
+      expect(getHighlighted()).toBe(getBlock('block-0'));
     });
 
     it('Escape from contenteditable announces navigate mode', async () => {
-      enterNavigateMode(0);
-      // Simulate being in edit mode
       const editable = getBlock('block-0').querySelector('[contenteditable="true"]') as HTMLElement;
       editable.focus();
 
@@ -283,17 +300,23 @@ describe('block-focus-manager', () => {
       expect(live?.textContent).toContain('ナビゲートモード');
     });
 
-    it('Enter on any block announces edit mode', async () => {
-      enterNavigateMode(3); // image block
-      fireKey('Enter');
+    it('Escape in navigate mode deactivates it', () => {
+      enterNavigateMode(0);
+      expect(isNavigateMode()).toBe(true);
+      fireKey('Escape');
+      expect(isNavigateMode()).toBe(false);
+      expect(getHighlighted()).toBeNull();
+    });
+
+    it('Escape in navigate mode announces exit', async () => {
+      enterNavigateMode(0);
+      fireKey('Escape');
       await new Promise((r) => requestAnimationFrame(r));
       const live = document.querySelector('[aria-live="polite"]');
-      expect(live?.textContent).toContain('編集モード');
+      expect(live?.textContent).toContain('ナビゲートモード終了');
     });
 
     it('Escape is not intercepted when overlay is open', () => {
-      enterNavigateMode(0);
-      // Simulate being in edit mode
       const editable = getBlock('block-0').querySelector('[contenteditable="true"]') as HTMLElement;
       editable.focus();
 
@@ -305,27 +328,33 @@ describe('block-focus-manager', () => {
       overlay.appendChild(dialog);
       document.body.appendChild(overlay);
 
-      // Escape should NOT be intercepted
       const event = fireKey('Escape');
       expect(event.defaultPrevented).toBe(false);
-      expect(document.activeElement).toBe(editable); // Still in contenteditable
+      expect(isNavigateMode()).toBe(false);
 
       overlay.remove();
     });
 
-    it('after Escape, arrow keys work for navigation', () => {
+    it('after Enter then Escape, navigate mode works again', () => {
       enterNavigateMode(1);
-      // Simulate being in edit mode
+      expect(isNavigateMode()).toBe(true);
+
+      // Exit via Enter
+      fireKey('Enter');
+      expect(isNavigateMode()).toBe(false);
+
+      // Simulate editing (focus on contenteditable)
       const editable = getBlock('block-1').querySelector('[contenteditable="true"]') as HTMLElement;
       editable.focus();
 
-      // Return to navigate mode
+      // Re-enter via Escape
       fireKey('Escape');
-      expect(document.activeElement).toBe(getBlock('block-1'));
+      expect(isNavigateMode()).toBe(true);
+      expect(getHighlighted()).toBe(getBlock('block-1'));
 
       // Arrow down should work
       fireKey('ArrowDown');
-      expect(document.activeElement).toBe(getBlock('block-2'));
+      expect(getHighlighted()).toBe(getBlock('block-2'));
     });
   });
 
@@ -336,26 +365,27 @@ describe('block-focus-manager', () => {
       enterNavigateMode(0);
       navigateNext();
       expect(getCurrentIndex()).toBe(1);
-      expect(document.activeElement).toBe(getBlock('block-1'));
+      expect(getHighlighted()).toBe(getBlock('block-1'));
     });
 
     it('navigatePrev moves to previous block', () => {
       enterNavigateMode(2);
       navigatePrev();
       expect(getCurrentIndex()).toBe(1);
-      expect(document.activeElement).toBe(getBlock('block-1'));
+      expect(getHighlighted()).toBe(getBlock('block-1'));
     });
 
-    it('navigateNext enters navigate mode if index is -1', () => {
-      expect(getCurrentIndex()).toBe(-1);
+    it('navigateNext enters navigate mode if not active', () => {
+      expect(isNavigateMode()).toBe(false);
       navigateNext();
+      expect(isNavigateMode()).toBe(true);
       expect(getCurrentIndex()).toBe(0);
-      expect(document.activeElement).toBe(getBlock('block-0'));
     });
 
-    it('navigatePrev enters navigate mode if index is -1', () => {
-      expect(getCurrentIndex()).toBe(-1);
+    it('navigatePrev enters navigate mode if not active', () => {
+      expect(isNavigateMode()).toBe(false);
       navigatePrev();
+      expect(isNavigateMode()).toBe(true);
       expect(getCurrentIndex()).toBe(0);
     });
 
@@ -382,13 +412,13 @@ describe('block-focus-manager', () => {
     it('navigateToNextHeading finds next heading', () => {
       enterNavigateMode(0);
       navigateToNextHeading();
-      expect(getCurrentIndex()).toBe(1); // header-block
+      expect(getCurrentIndex()).toBe(1);
     });
 
     it('navigateToNextHeading skips non-heading blocks', () => {
       enterNavigateMode(2);
       navigateToNextHeading();
-      expect(getCurrentIndex()).toBe(4); // sub_header-block
+      expect(getCurrentIndex()).toBe(4);
     });
 
     it('navigateToNextHeading announces when no heading found', async () => {
@@ -402,11 +432,10 @@ describe('block-focus-manager', () => {
     it('navigateToPrevHeading finds previous heading', () => {
       enterNavigateMode(3);
       navigateToPrevHeading();
-      expect(getCurrentIndex()).toBe(1); // header-block
+      expect(getCurrentIndex()).toBe(1);
     });
 
     it('navigateToPrevHeading announces when no heading found', async () => {
-      // Start at block 1 (heading). Block 0 before it is text, no heading found.
       enterNavigateMode(1);
       navigateToPrevHeading();
       await new Promise((r) => requestAnimationFrame(r));
@@ -417,13 +446,13 @@ describe('block-focus-manager', () => {
     it('navigateToNextHeadingLevel(1) finds H1', () => {
       enterNavigateMode(0);
       navigateToNextHeadingLevel(1);
-      expect(getCurrentIndex()).toBe(1); // header-block (H1)
+      expect(getCurrentIndex()).toBe(1);
     });
 
     it('navigateToNextHeadingLevel(2) finds H2', () => {
       enterNavigateMode(0);
       navigateToNextHeadingLevel(2);
-      expect(getCurrentIndex()).toBe(4); // sub_header-block (H2)
+      expect(getCurrentIndex()).toBe(4);
     });
 
     it('navigateToNextHeadingLevel(3) announces when none found', async () => {
@@ -438,29 +467,34 @@ describe('block-focus-manager', () => {
   // ─── First / Last block ────────────────────────────────────
 
   describe('first / last block', () => {
-    it('navigateToFirst focuses first block', () => {
+    it('navigateToFirst highlights first block', () => {
       enterNavigateMode(3);
       navigateToFirst();
       expect(getCurrentIndex()).toBe(0);
-      expect(document.activeElement).toBe(getBlock('block-0'));
+      expect(getHighlighted()).toBe(getBlock('block-0'));
     });
 
-    it('navigateToLast focuses last block', () => {
+    it('navigateToLast highlights last block', () => {
       enterNavigateMode(0);
       navigateToLast();
       expect(getCurrentIndex()).toBe(4);
-      expect(document.activeElement).toBe(getBlock('block-4'));
+      expect(getHighlighted()).toBe(getBlock('block-4'));
     });
   });
 
   // ─── Reset ─────────────────────────────────────────────────
 
   describe('resetBlockFocusManager', () => {
-    it('resets the current index', () => {
+    it('resets index, mode, and removes highlight', () => {
       enterNavigateMode(3);
       expect(getCurrentIndex()).toBe(3);
+      expect(isNavigateMode()).toBe(true);
+      expect(getHighlighted()).not.toBeNull();
+
       resetBlockFocusManager();
       expect(getCurrentIndex()).toBe(-1);
+      expect(isNavigateMode()).toBe(false);
+      expect(getHighlighted()).toBeNull();
     });
   });
 
@@ -471,22 +505,30 @@ describe('block-focus-manager', () => {
       enterNavigateMode(0);
       destroyBlockFocusManager();
 
-      // Arrow keys should no longer be intercepted
+      // Re-init to get a clean state, then check events pass through
       const event = fireKey('ArrowDown');
       expect(event.defaultPrevented).toBe(false);
     });
 
-    it('resets index to -1', () => {
+    it('resets index and mode', () => {
       enterNavigateMode(2);
       destroyBlockFocusManager();
       expect(getCurrentIndex()).toBe(-1);
+      expect(isNavigateMode()).toBe(false);
+    });
+
+    it('removes highlight', () => {
+      enterNavigateMode(2);
+      expect(getHighlighted()).not.toBeNull();
+      destroyBlockFocusManager();
+      expect(getHighlighted()).toBeNull();
     });
   });
 
   // ─── Modifier key guards ──────────────────────────────────
 
   describe('modifier key guards', () => {
-    it('ignores Alt+ArrowDown', () => {
+    it('ignores Alt+ArrowDown in navigate mode', () => {
       enterNavigateMode(0);
       const event = new KeyboardEvent('keydown', {
         key: 'ArrowDown',
@@ -495,11 +537,10 @@ describe('block-focus-manager', () => {
         cancelable: true,
       });
       document.dispatchEvent(event);
-      // Should not have moved (Alt is held)
       expect(getCurrentIndex()).toBe(0);
     });
 
-    it('ignores Ctrl+ArrowDown', () => {
+    it('ignores Ctrl+ArrowDown in navigate mode', () => {
       enterNavigateMode(0);
       const event = new KeyboardEvent('keydown', {
         key: 'ArrowDown',
@@ -511,7 +552,7 @@ describe('block-focus-manager', () => {
       expect(getCurrentIndex()).toBe(0);
     });
 
-    it('ignores Shift+ArrowDown (Notion block selection)', () => {
+    it('ignores Shift+ArrowDown in navigate mode', () => {
       enterNavigateMode(0);
       const event = new KeyboardEvent('keydown', {
         key: 'ArrowDown',
@@ -521,22 +562,6 @@ describe('block-focus-manager', () => {
       });
       document.dispatchEvent(event);
       expect(getCurrentIndex()).toBe(0);
-    });
-  });
-
-  // ─── Focus tracking via focusin ────────────────────────────
-
-  describe('focusin tracking', () => {
-    it('updates index when block receives focus', () => {
-      const block2 = getBlock('block-2');
-      block2.setAttribute('tabindex', '-1');
-      block2.focus();
-
-      // Dispatch focusin to simulate the event
-      const event = new FocusEvent('focusin', { bubbles: true });
-      block2.dispatchEvent(event);
-
-      expect(getCurrentIndex()).toBe(2);
     });
   });
 });

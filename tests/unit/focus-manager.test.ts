@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { focusSidebar, focusMainContent, focusHeader, saveFocus, restoreFocus } from '../../src/content/focus-manager';
 import { initLiveAnnouncer, destroyLiveAnnouncer } from '../../src/content/live-announcer';
+import { initBlockFocusManager, destroyBlockFocusManager, isNavigateMode } from '../../src/content/block-focus-manager';
 
 function createLandmarks(): void {
   // Sidebar
@@ -81,22 +82,28 @@ describe('focus-manager', () => {
   });
 
   describe('focusMainContent', () => {
-    it('focuses the first block in main frame', () => {
+    beforeEach(() => {
+      initBlockFocusManager();
+    });
+
+    afterEach(() => {
+      destroyBlockFocusManager();
+    });
+
+    it('highlights the first block in main frame (virtual cursor)', () => {
       createLandmarks();
       focusMainContent();
 
       const firstBlock = document.querySelector('.notion-selectable[data-block-id]');
-      expect(document.activeElement).toBe(firstBlock);
+      expect(firstBlock?.classList.contains('accessible-notion-nav-focus')).toBe(true);
+      expect(isNavigateMode()).toBe(true);
     });
 
-    it('sets tabindex=0 on the focused block (navigate mode)', () => {
+    it('activates navigate mode', () => {
       createLandmarks();
-      const block = document.querySelector('.notion-selectable[data-block-id]') as HTMLElement;
-      expect(block.hasAttribute('tabindex')).toBe(false);
-
       focusMainContent();
 
-      expect(block.getAttribute('tabindex')).toBe('0');
+      expect(isNavigateMode()).toBe(true);
     });
 
     it('announces block not found when no blocks exist', async () => {
