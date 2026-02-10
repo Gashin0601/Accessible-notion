@@ -233,6 +233,36 @@ function detachKeyboardNavigation(): void {
 }
 
 /**
+ * Determine if a dialog is the Notion search dialog (Cmd+K / Ctrl+K).
+ * Avoids false positives on page options menu, trash dialog, settings, etc.
+ */
+function isSearchDialog(dialog: HTMLElement): boolean {
+  // Must have a text input
+  const input = dialog.querySelector<HTMLInputElement>('input[type="text"], input:not([type])');
+  if (!input) return false;
+
+  // Check for Notion search-specific indicators
+  const hasSearchClass = !!dialog.querySelector('.notion-search-input, [class*="quick-find"]');
+  if (hasSearchClass) return true;
+
+  // Check placeholder text: Notion search uses various patterns
+  // e.g. "検索...", "Search...", "XXX's Workspaceを検索、または質問 ...", "Search XXX..."
+  const placeholder = input.getAttribute('placeholder') ?? '';
+  const isSearchPlaceholder = /^検索|^Search/i.test(placeholder)
+    || placeholder.includes('を検索') || placeholder.includes('Search Notion')
+    || placeholder.includes('Notion を検索');
+  if (!isSearchPlaceholder) return false;
+
+  // Exclude dialogs that have other distinctive features (listbox with Serif, tablist, etc.)
+  const listbox = dialog.querySelector('[role="listbox"]');
+  if (listbox?.textContent?.includes('Serif')) return false;
+  if (dialog.querySelector('[role="tablist"]')) return false;
+  if (dialog.querySelector('input[placeholder*="ゴミ箱"]')) return false;
+
+  return true;
+}
+
+/**
  * Watch for search dialog opening/closing and result updates.
  */
 export function initSearchEnhancer(): void {
@@ -246,22 +276,16 @@ export function initSearchEnhancer(): void {
           ? node
           : node.querySelector('[role="dialog"]');
 
-        if (dialog instanceof HTMLElement) {
-          // Check if this looks like a search dialog
-          const hasInput = dialog.querySelector('input[type="text"], input:not([type])');
-          if (hasInput) {
-            enhanceSearchDialog(dialog);
-          }
+        if (dialog instanceof HTMLElement && isSearchDialog(dialog)) {
+          enhanceSearchDialog(dialog);
         }
 
         // Also check if a node was added INSIDE an existing dialog
         // (e.g., input field rendered after dialog container appears)
         const parentDialog = node.closest?.('[role="dialog"]');
-        if (parentDialog instanceof HTMLElement && !parentDialog.hasAttribute(EXTENSION_ATTR)) {
-          const hasInput = parentDialog.querySelector('input[type="text"], input:not([type])');
-          if (hasInput) {
-            enhanceSearchDialog(parentDialog);
-          }
+        if (parentDialog instanceof HTMLElement && !parentDialog.hasAttribute(EXTENSION_ATTR)
+            && isSearchDialog(parentDialog)) {
+          enhanceSearchDialog(parentDialog);
         }
       }
 

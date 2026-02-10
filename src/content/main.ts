@@ -215,6 +215,9 @@ function processNewNodes(mutations: MutationRecord[]): void {
   // Home page or inbox may need enhancement
   enhanceHomePage();
   enhanceInboxPanel();
+
+  // DB toolbar buttons
+  enhanceDBToolbarButtons();
 }
 
 /**
@@ -253,6 +256,7 @@ function handlePageChange(): void {
     enhanceSidePeek();
     enhanceHomePage();
     enhanceInboxPanel();
+    enhanceDBToolbarButtons();
 
     // Extract page title for announcement
     const titleEl = document.querySelector('.notion-page-block h1, [class*="page-title"]');
@@ -429,8 +433,26 @@ function enhanceTopbar(): void {
     logDebug(MODULE, `Breadcrumb enhanced: ${links.length} items`);
   }
 
+  // Label topbar buttons that lack aria-label
+  enhanceTopbarButtons(topbar);
+
   // Enhance sidebar sections with labels
   enhanceSidebarSections();
+}
+
+function enhanceTopbarButtons(topbar: HTMLElement): void {
+  const buttons = topbar.querySelectorAll<HTMLElement>('[role="button"]');
+  for (const btn of buttons) {
+    if (btn.getAttribute('aria-label')) continue;
+    const text = btn.textContent?.trim() ?? '';
+    if (!text) continue;
+
+    // "N日前 編集" / "N分前 編集" / "N時間前 編集" — last edited info
+    if (/\d+[日時分秒]前\s*編集|ago\s*edited/i.test(text)) {
+      btn.setAttribute('aria-label', `最終更新: ${text}`);
+      protect(btn);
+    }
+  }
 }
 
 function enhanceSidebarSections(): void {
@@ -476,6 +498,31 @@ function enhanceSidebarSections(): void {
   }
 
   logDebug(MODULE, 'Sidebar sections enhanced');
+}
+
+// ─── DB toolbar button enhancement ──────────────────────────
+function enhanceDBToolbarButtons(): void {
+  const dbBlocks = document.querySelectorAll<HTMLElement>('.notion-collection_view-block');
+  for (const db of dbBlocks) {
+    const buttons = db.querySelectorAll<HTMLElement>('div[role="button"]');
+    for (const btn of buttons) {
+      if (btn.getAttribute('aria-label')) continue;
+      const text = btn.textContent?.trim() ?? '';
+      const rect = btn.getBoundingClientRect();
+
+      // Skip large or invisible elements
+      if (rect.height > 35 || rect.height < 15 || rect.width > 200) continue;
+
+      // "新規" button
+      if (text === '新規' || text === 'New') {
+        btn.setAttribute('aria-label', '新規ページを作成');
+      }
+      // "他N件" button (more views)
+      else if (/^他\d+件$/.test(text) || /^\+\d+/.test(text)) {
+        btn.setAttribute('aria-label', `${text} — 他のビューを表示`);
+      }
+    }
+  }
 }
 
 // ─── Home page enhancement ──────────────────────────────────

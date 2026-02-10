@@ -32,7 +32,7 @@ let highlightSyncTimer: ReturnType<typeof setInterval> | null = null;
 const POPUP_MARKER = EXTENSION_ATTR + '-popup';
 
 /** Detect popup type from its content */
-type PopupType = 'slash-command' | 'mention' | 'turn-into' | 'color-picker' | 'block-action' | 'ai-panel' | 'property-editor' | 'link-preview' | 'emoji-picker' | 'generic';
+type PopupType = 'slash-command' | 'mention' | 'turn-into' | 'color-picker' | 'block-action' | 'page-options' | 'ai-panel' | 'property-editor' | 'link-preview' | 'emoji-picker' | 'generic';
 
 /**
  * Determine what kind of popup this dialog is.
@@ -52,6 +52,11 @@ function detectPopupType(dialog: HTMLElement): PopupType {
     // Turn-into menu: has block type options but triggered from block menu
     if (lbText.includes('テキスト') && lbText.includes('トグル')) {
       return 'turn-into';
+    }
+
+    // Page options menu: has font options (デフォルト, Serif, Mono) + actions like リンクをコピー
+    if (lbText.includes('Serif') && lbText.includes('Mono') && lbText.includes('リンクをコピー')) {
+      return 'page-options';
     }
 
     // Color/background picker
@@ -113,6 +118,7 @@ function getPopupLabel(type: PopupType): string {
     case 'turn-into': return 'ブロックタイプ変更';
     case 'color-picker': return 'カラーピッカー';
     case 'block-action': return 'ブロック操作';
+    case 'page-options': return 'ページ設定';
     case 'ai-panel': return 'Notion AI';
     case 'property-editor': return 'プロパティ編集';
     case 'link-preview': return 'リンクプレビュー';
@@ -326,6 +332,76 @@ function enhanceBlockActionMenu(dialog: HTMLElement): void {
 }
 
 /**
+ * Enhance the page options menu ("..." button menu).
+ * Contains font options, actions (copy link, duplicate, move, trash),
+ * toggle switches (font size, margins, page lock), and more.
+ */
+function enhancePageOptionsMenu(dialog: HTMLElement): void {
+  dialog.setAttribute('aria-label', 'ページ設定');
+
+  const listbox = dialog.querySelector<HTMLElement>('[role="listbox"]');
+  if (listbox) {
+    listbox.setAttribute('aria-label', 'ページアクション');
+    enhanceOptions(listbox);
+    startHighlightSync(dialog, listbox);
+  }
+
+  // Label switches (フォントを縮小, 左右の余白を縮小, ページをロック)
+  enhanceSwitchesInPopup(dialog);
+
+  // Label the search input
+  const searchInput = dialog.querySelector<HTMLInputElement>('input');
+  if (searchInput && !searchInput.getAttribute('aria-label')) {
+    const placeholder = searchInput.getAttribute('placeholder') ?? '';
+    searchInput.setAttribute('aria-label', placeholder || 'アクションを検索');
+  }
+
+  announce('ページ設定');
+  logDebug(MODULE, 'Enhanced page options menu');
+}
+
+/**
+ * Label unlabeled switches in a popup by finding adjacent label text.
+ */
+function enhanceSwitchesInPopup(container: HTMLElement): void {
+  const switches = container.querySelectorAll<HTMLElement>('[role="switch"]');
+  for (const sw of switches) {
+    if (sw.getAttribute('aria-label') || sw.getAttribute('aria-labelledby')) continue;
+
+    // Find label text from parent option or surrounding elements
+    const option = sw.closest('[role="option"], [role="menuitem"]');
+    if (option) {
+      // Get text content excluding the switch itself and <style> elements
+      const clone = option.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll('[role="switch"], style, svg').forEach(el => el.remove());
+      const labelText = clone.textContent?.trim();
+      if (labelText && labelText.length < 40) {
+        sw.setAttribute('aria-label', labelText);
+      }
+    } else {
+      // Fallback: look at siblings
+      const parent = sw.parentElement;
+      if (!parent) continue;
+      for (const sib of parent.children) {
+        if (sib === sw || !(sib instanceof HTMLElement)) continue;
+        const text = sib.textContent?.trim();
+        if (text && text.length < 30) {
+          sw.setAttribute('aria-label', text);
+          break;
+        }
+      }
+    }
+
+    // Ensure aria-checked
+    if (!sw.hasAttribute('aria-checked')) {
+      const bg = getComputedStyle(sw).backgroundColor;
+      const isChecked = bg && !bg.includes('0, 0, 0, 0') && !bg.includes('transparent');
+      sw.setAttribute('aria-checked', String(!!isChecked));
+    }
+  }
+}
+
+/**
  * Enhance a color picker popup.
  */
 function enhanceColorPicker(dialog: HTMLElement): void {
@@ -375,6 +451,9 @@ function enhancePopup(dialog: HTMLElement): void {
       break;
     case 'block-action':
       enhanceBlockActionMenu(dialog);
+      break;
+    case 'page-options':
+      enhancePageOptionsMenu(dialog);
       break;
     case 'color-picker':
       enhanceColorPicker(dialog);

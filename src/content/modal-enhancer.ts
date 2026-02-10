@@ -94,6 +94,17 @@ function detectDialogType(dialog: HTMLElement): string {
   if (dialog.querySelector('[id^="settings-tab-"]') || dialog.querySelector('[role="tablist"][aria-orientation="vertical"]')) {
     return 'settings';
   }
+  // Trash dialog (check by search input placeholder)
+  const trashInput = dialog.querySelector('input[placeholder*="ゴミ箱"], input[placeholder*="trash" i]');
+  if (trashInput) {
+    return 'trash';
+  }
+  // Page options menu (contains Serif/Mono font options + actions) — NOT a share dialog
+  const listbox = dialog.querySelector('[role="listbox"]');
+  const lbText = listbox?.textContent ?? '';
+  if (lbText.includes('Serif') && lbText.includes('Mono') && lbText.includes('リンクをコピー')) {
+    return 'generic'; // Let popup-enhancer handle as 'page-options'
+  }
   // Share dialog
   if (text.includes('共有') || text.includes('Share') || text.includes('リンクをコピー') || text.includes('Copy link')) {
     return 'share';
@@ -125,6 +136,7 @@ function getDialogLabel(type: string): string {
   switch (type) {
     case 'share': return '共有';
     case 'settings': return '設定';
+    case 'trash': return 'ゴミ箱';
     case 'import-export': return 'インポート/エクスポート';
     case 'template': return 'テンプレート';
     case 'date-picker': return '日付選択';
@@ -145,10 +157,15 @@ function enhanceDialogByType(dialog: HTMLElement, type: string): void {
     case 'settings':
       enhanceSettingsDialog(dialog);
       break;
+    case 'trash':
+      enhanceTrashDialog(dialog);
+      break;
     case 'date-picker':
       enhanceDatePicker(dialog);
       break;
   }
+  // Generic: label any unlabeled switches inside dialogs
+  enhanceSwitchesInContainer(dialog);
 }
 
 function enhanceShareDialog(dialog: HTMLElement): void {
@@ -324,27 +341,107 @@ function applySettingsEnhancements(dialog: HTMLElement): void {
   logDebug(MODULE, 'Enhanced settings dialog');
 }
 
-function enhanceDatePicker(dialog: HTMLElement): void {
-  // Date picker has a calendar grid, today button, month navigation
-  const calGrid = dialog.querySelector<HTMLElement>('.notion-calendar, [class*="calendar-view"], table');
-  if (calGrid) {
-    calGrid.setAttribute('role', 'grid');
-    calGrid.setAttribute('aria-label', 'カレンダー');
+function enhanceTrashDialog(dialog: HTMLElement): void {
+  // Fix label (Notion sets aria-label="検索" by default)
+  dialog.setAttribute('aria-label', 'ゴミ箱');
 
-    // Day cells
-    const cells = calGrid.querySelectorAll<HTMLElement>('td, [class*="day"]');
-    cells.forEach((cell) => {
-      if (!cell.getAttribute('role')) {
-        cell.setAttribute('role', 'gridcell');
-      }
-      // Make focusable
-      if (!cell.hasAttribute('tabindex')) {
-        cell.setAttribute('tabindex', '-1');
-      }
-    });
+  // Label search input
+  const searchInput = dialog.querySelector<HTMLInputElement>('input');
+  if (searchInput && !searchInput.getAttribute('aria-label')) {
+    searchInput.setAttribute('aria-label', searchInput.getAttribute('placeholder') ?? 'ゴミ箱の中を検索');
   }
 
-  // Navigation buttons (prev/next month)
+  // Label filter dropdown buttons (最終更新者, 場所, チームスペース)
+  const filterBtns = dialog.querySelectorAll<HTMLElement>('div[role="button"][aria-haspopup="listbox"]');
+  for (const btn of filterBtns) {
+    if (btn.getAttribute('aria-label')) continue;
+    const text = btn.textContent?.trim();
+    if (text) {
+      btn.setAttribute('aria-label', `フィルター: ${text}`);
+    }
+  }
+
+  // Label the scroller as a list of trash items
+  const scroller = dialog.querySelector<HTMLElement>('.notion-scroller');
+  if (scroller && !scroller.getAttribute('aria-label')) {
+    scroller.setAttribute('role', 'list');
+    scroller.setAttribute('aria-label', 'ゴミ箱のページ一覧');
+  }
+
+  logDebug(MODULE, 'Enhanced trash dialog');
+}
+
+/**
+ * Label unlabeled switches by finding adjacent label text.
+ * Covers: page options (フォントを縮小, 左右の余白を縮小, ページをロック),
+ * date picker (終了日, 時間を含む), and settings switches.
+ */
+function enhanceSwitchesInContainer(container: HTMLElement): void {
+  const switches = container.querySelectorAll<HTMLElement>('[role="switch"]');
+  for (const sw of switches) {
+    if (sw.getAttribute('aria-label') || sw.getAttribute('aria-labelledby')) continue;
+
+    // Ensure aria-checked reflects the visual state
+    if (!sw.hasAttribute('aria-checked')) {
+      // Determine checked state from background color or class
+      const bg = getComputedStyle(sw).backgroundColor;
+      const isChecked = bg && bg !== 'rgba(0, 0, 0, 0)' && bg !== 'transparent'
+        && !bg.includes('55, 55, 55') && !bg.includes('rgba(0, 0, 0');
+      sw.setAttribute('aria-checked', String(!!isChecked));
+    }
+
+    // Find label text: look for adjacent text in the parent element
+    const parent = sw.parentElement;
+    if (!parent) continue;
+
+    // Text children in the same row, excluding the switch itself
+    const siblings = Array.from(parent.children);
+    let labelText = '';
+    for (const sib of siblings) {
+      if (sib === sw) continue;
+      if (!(sib instanceof HTMLElement)) continue;
+      const text = sib.textContent?.trim();
+      if (text && text.length < 30 && !text.includes('›')) {
+        labelText = text;
+        break;
+      }
+    }
+
+    // Walk up if label not found at sibling level
+    if (!labelText && parent.parentElement) {
+      const grandSiblings = Array.from(parent.parentElement.children);
+      for (const gsib of grandSiblings) {
+        if (gsib.contains(sw)) continue;
+        if (!(gsib instanceof HTMLElement)) continue;
+        const text = gsib.textContent?.trim();
+        if (text && text.length < 30) {
+          labelText = text;
+          break;
+        }
+      }
+    }
+
+    if (labelText) {
+      sw.setAttribute('aria-label', labelText);
+    }
+  }
+}
+
+function enhanceDatePicker(dialog: HTMLElement): void {
+  // Label the date input
+  const dateInput = dialog.querySelector<HTMLInputElement>('input');
+  if (dateInput && !dateInput.getAttribute('aria-label')) {
+    dateInput.setAttribute('aria-label', '日付を入力');
+  }
+
+  // Date picker has a calendar grid, today button, month navigation
+  const calGrid = dialog.querySelector<HTMLElement>('.notion-calendar, [class*="calendar-view"], table, [role="grid"]');
+  if (calGrid && !calGrid.getAttribute('aria-label')) {
+    if (!calGrid.getAttribute('role')) calGrid.setAttribute('role', 'grid');
+    calGrid.setAttribute('aria-label', 'カレンダー');
+  }
+
+  // Navigation buttons (prev/next month, today)
   const navButtons = dialog.querySelectorAll<HTMLElement>('button, [role="button"]');
   navButtons.forEach((btn) => {
     const text = btn.textContent?.trim() ?? '';
@@ -355,9 +452,17 @@ function enhanceDatePicker(dialog: HTMLElement): void {
         btn.setAttribute('aria-label', '明日');
       } else if (text === '昨日' || text === 'Yesterday') {
         btn.setAttribute('aria-label', '昨日');
+      } else if (text === '<' || text === '‹' || text === '＜') {
+        btn.setAttribute('aria-label', '前の月');
+      } else if (text === '>' || text === '›' || text === '＞') {
+        btn.setAttribute('aria-label', '次の月');
+      } else if (text === 'クリア' || text === 'Clear') {
+        btn.setAttribute('aria-label', '日付をクリア');
       }
     }
   });
+
+  // Switches are handled by enhanceSwitchesInContainer (called from enhanceDialogByType)
 
   logDebug(MODULE, 'Enhanced date picker dialog');
 }
