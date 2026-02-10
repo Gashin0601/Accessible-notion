@@ -43,7 +43,11 @@ function setupFocusTrap(dialog: HTMLElement): void {
 
     const focusable = Array.from(
       dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
-    ).filter((el) => el.offsetParent !== null);
+    ).filter((el) => {
+      // Check visibility: not display:none, not visibility:hidden
+      const style = getComputedStyle(el);
+      return style.display !== 'none' && style.visibility !== 'hidden';
+    });
 
     if (focusable.length === 0) return;
 
