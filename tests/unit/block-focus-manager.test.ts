@@ -246,25 +246,25 @@ describe('block-focus-manager', () => {
   // ─── Enter / Escape mode switching ─────────────────────────
 
   describe('Enter / Escape mode switching', () => {
-    it('Enter focuses the contenteditable inside the block', () => {
+    it('Enter announces edit mode', async () => {
       enterNavigateMode(0);
       fireKey('Enter');
-      const editable = getBlock('block-0').querySelector('[contenteditable="true"]');
-      expect(document.activeElement).toBe(editable);
+      await new Promise((r) => requestAnimationFrame(r));
+      const live = document.querySelector('[aria-live="polite"]');
+      expect(live?.textContent).toContain('編集モード');
     });
 
-    it('Enter preventDefault is called', () => {
+    it('Enter does not preventDefault (passes through to Notion)', () => {
       enterNavigateMode(0);
       const event = fireKey('Enter');
-      expect(event.defaultPrevented).toBe(true);
+      expect(event.defaultPrevented).toBe(false);
     });
 
     it('Escape from contenteditable returns to block container', () => {
       enterNavigateMode(0);
-      // Enter edit mode
-      fireKey('Enter');
+      // Simulate being in edit mode (Notion moves focus to contenteditable)
       const editable = getBlock('block-0').querySelector('[contenteditable="true"]') as HTMLElement;
-      expect(document.activeElement).toBe(editable);
+      editable.focus();
 
       // Press Escape
       fireKey('Escape');
@@ -273,24 +273,29 @@ describe('block-focus-manager', () => {
 
     it('Escape from contenteditable announces navigate mode', async () => {
       enterNavigateMode(0);
-      fireKey('Enter');
+      // Simulate being in edit mode
+      const editable = getBlock('block-0').querySelector('[contenteditable="true"]') as HTMLElement;
+      editable.focus();
+
       fireKey('Escape');
       await new Promise((r) => requestAnimationFrame(r));
       const live = document.querySelector('[aria-live="polite"]');
       expect(live?.textContent).toContain('ナビゲートモード');
     });
 
-    it('Enter on non-editable block announces error', async () => {
+    it('Enter on any block announces edit mode', async () => {
       enterNavigateMode(3); // image block
       fireKey('Enter');
       await new Promise((r) => requestAnimationFrame(r));
       const live = document.querySelector('[aria-live="polite"]');
-      expect(live?.textContent).toContain('編集できません');
+      expect(live?.textContent).toContain('編集モード');
     });
 
     it('Escape is not intercepted when overlay is open', () => {
       enterNavigateMode(0);
-      fireKey('Enter');
+      // Simulate being in edit mode
+      const editable = getBlock('block-0').querySelector('[contenteditable="true"]') as HTMLElement;
+      editable.focus();
 
       // Create a mock overlay
       const overlay = document.createElement('div');
@@ -299,9 +304,6 @@ describe('block-focus-manager', () => {
       dialog.setAttribute('role', 'dialog');
       overlay.appendChild(dialog);
       document.body.appendChild(overlay);
-
-      const editable = getBlock('block-0').querySelector('[contenteditable="true"]') as HTMLElement;
-      expect(document.activeElement).toBe(editable);
 
       // Escape should NOT be intercepted
       const event = fireKey('Escape');
@@ -313,8 +315,10 @@ describe('block-focus-manager', () => {
 
     it('after Escape, arrow keys work for navigation', () => {
       enterNavigateMode(1);
-      // Enter edit mode
-      fireKey('Enter');
+      // Simulate being in edit mode
+      const editable = getBlock('block-1').querySelector('[contenteditable="true"]') as HTMLElement;
+      editable.focus();
+
       // Return to navigate mode
       fireKey('Escape');
       expect(document.activeElement).toBe(getBlock('block-1'));

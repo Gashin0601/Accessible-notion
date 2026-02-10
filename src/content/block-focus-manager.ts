@@ -104,7 +104,47 @@ function enterEditMode(): void {
   const editable = block.querySelector<HTMLElement>(TEXTBOX);
 
   if (editable) {
-    editable.focus();
+    // Notion's ContentEditableVoid blocks programmatic focus() calls.
+    // Use Selection API to place a cursor inside the contenteditable,
+    // then click the block to let Notion's native editing activate.
+    const sel = window.getSelection();
+    const range = document.createRange();
+
+    // Find a text node to place cursor at end, or collapse into container
+    const walker = document.createTreeWalker(editable, NodeFilter.SHOW_TEXT);
+    let lastText: Text | null = null;
+    let node: Text | null;
+    while ((node = walker.nextNode() as Text | null)) {
+      lastText = node;
+    }
+
+    if (lastText) {
+      range.setStart(lastText, lastText.length);
+    } else {
+      range.selectNodeContents(editable);
+    }
+    range.collapse(false);
+
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    // Remove tabindex so the block no longer traps focus in Navigate mode
+    block.removeAttribute('tabindex');
+
+    // Simulate a click at the editable's position to activate Notion editing
+    const rect = editable.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      const clickEvent = new PointerEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        clientX: rect.left + 5,
+        clientY: rect.top + rect.height / 2,
+        pointerId: 1,
+        pointerType: 'mouse',
+      });
+      editable.dispatchEvent(clickEvent);
+    }
+
     announce('編集モード');
     logDebug(MODULE, 'Entered edit mode');
   } else {
@@ -137,6 +177,11 @@ function exitEditToNavigate(): void {
   }
 
   block.setAttribute('tabindex', '0');
+
+  // Clear Notion's editing state before re-focusing the block container
+  window.getSelection()?.removeAllRanges();
+  (document.activeElement as HTMLElement | null)?.blur();
+
   block.focus();
 
   const msg = buildAnnouncement(block, currentBlockIndex, blocks.length);
@@ -182,9 +227,11 @@ function handleKeydown(e: KeyboardEvent): void {
         return;
       }
       case 'Enter': {
-        e.preventDefault();
-        e.stopPropagation();
-        enterEditMode();
+        // Let Enter pass through to Notion — it creates a new block or
+        // enters editing mode.  Notion's ContentEditableVoid prevents
+        // programmatic focus, so we rely on the native Enter behaviour.
+        // The user then types normally; Escape returns to Navigate mode.
+        announce('編集モード');
         return;
       }
     }
